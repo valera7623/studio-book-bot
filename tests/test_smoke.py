@@ -75,3 +75,12 @@ async def test_landing_http_substitutes_tariffs(engine):
         assert "990" in text
         assert "2\xa0000" in text or "2&nbsp;000" in text
         assert "Стоимость услуг" in text
+        offer = await client.get("/offer")
+        assert offer.status == 200
+        offer_text = await offer.text()
+        assert "Публичная оферта" in offer_text
+        assert "220910861433" in offer_text
+        assert "studiobook.com.ru" in offer_text
+        pdf = await client.get("/offer.pdf")
+        assert pdf.status == 200
+        assert "pdf" in (pdf.headers.get("Content-Type") or "").lower()

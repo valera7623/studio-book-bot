@@ -17,26 +17,45 @@ from src.services.studios import get_studio_by_slug, list_active_resources
 
 logger = logging.getLogger(__name__)
 
-LANDING_PATH = PROJECT_ROOT / "landing" / "index.html"
+LANDING_DIR = PROJECT_ROOT / "landing"
+LANDING_PATH = LANDING_DIR / "index.html"
 
 
 def _form_to_dict(data: dict) -> dict:
     return {str(k): (v[0] if isinstance(v, list) and v else v) for k, v in data.items()}
 
 
-async def health(_request: web.Request) -> web.Response:
-    return web.Response(text="ok")
-
-
-async def landing(request: web.Request) -> web.Response:
-    html = LANDING_PATH.read_text(encoding="utf-8") if LANDING_PATH.exists() else "<p>studio-book</p>"
+def _render_landing(path: Path) -> str:
+    html = path.read_text(encoding="utf-8") if path.exists() else "<p>studio-book</p>"
     bot_username = settings.BOT_USERNAME.strip() or "your_bot"
     html = html.replace("{{BOT_USERNAME}}", bot_username)
     html = html.replace("{{BOT_LINK}}", f"https://t.me/{bot_username}")
     html = html.replace("{{TARIFF_STARTER_RUB}}", str(settings.TARIFF_STARTER_RUB))
     html = html.replace("{{TARIFF_PLUS_RUB}}", str(settings.TARIFF_PLUS_RUB))
     html = html.replace("{{FREE_BOOKINGS_PER_MONTH}}", str(settings.FREE_BOOKINGS_PER_MONTH))
-    return web.Response(text=html, content_type="text/html", charset="utf-8")
+    return html
+
+
+async def health(_request: web.Request) -> web.Response:
+    return web.Response(text="ok")
+
+
+async def landing(_request: web.Request) -> web.Response:
+    return web.Response(text=_render_landing(LANDING_PATH), content_type="text/html", charset="utf-8")
+
+
+async def offer_page(_request: web.Request) -> web.Response:
+    path = LANDING_DIR / "offer.html"
+    if not path.exists():
+        raise web.HTTPNotFound()
+    return web.Response(text=_render_landing(path), content_type="text/html", charset="utf-8")
+
+
+async def offer_pdf(_request: web.Request) -> web.StreamResponse:
+    path = LANDING_DIR / "offer.pdf"
+    if not path.exists():
+        raise web.HTTPNotFound()
+    return web.FileResponse(path, headers={"Content-Type": "application/pdf"})
 
 
 async def pay_stub(request: web.Request) -> web.Response:
@@ -151,6 +170,9 @@ def create_web_app(bot, session_maker) -> web.Application:
     app["session_maker"] = session_maker
     app.router.add_get("/health", health)
     app.router.add_get("/", landing)
+    app.router.add_get("/offer", offer_page)
+    app.router.add_get("/offer/", offer_page)
+    app.router.add_get("/offer.pdf", offer_pdf)
     app.router.add_get("/pay/success", pay_stub)
     app.router.add_get("/pay/return", pay_stub)
     app.router.add_get("/ical/{slug}.ics", ical_feed)
