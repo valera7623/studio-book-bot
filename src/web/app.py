@@ -33,13 +33,17 @@ async def landing(request: web.Request) -> web.Response:
     bot_username = settings.BOT_USERNAME.strip() or "your_bot"
     html = html.replace("{{BOT_USERNAME}}", bot_username)
     html = html.replace("{{BOT_LINK}}", f"https://t.me/{bot_username}")
-    return web.Response(text=html, content_type="text/html; charset=utf-8")
+    html = html.replace("{{TARIFF_STARTER_RUB}}", str(settings.TARIFF_STARTER_RUB))
+    html = html.replace("{{TARIFF_PLUS_RUB}}", str(settings.TARIFF_PLUS_RUB))
+    html = html.replace("{{FREE_BOOKINGS_PER_MONTH}}", str(settings.FREE_BOOKINGS_PER_MONTH))
+    return web.Response(text=html, content_type="text/html", charset="utf-8")
 
 
 async def pay_stub(request: web.Request) -> web.Response:
     return web.Response(
         text="Оплата принята платёжной системой. Вернитесь в Telegram — бронь подтвердится автоматически.",
-        content_type="text/plain; charset=utf-8",
+        content_type="text/plain",
+        charset="utf-8",
     )
 
 
@@ -64,7 +68,8 @@ async def ical_feed(request: web.Request) -> web.Response:
         body = build_calendar(studio, resources, list(rows))
     return web.Response(
         text=body,
-        content_type="text/calendar; charset=utf-8",
+        content_type="text/calendar",
+        charset="utf-8",
         headers={"Content-Disposition": f'attachment; filename="{slug}.ics"'},
     )
 

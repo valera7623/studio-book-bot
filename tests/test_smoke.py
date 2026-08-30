@@ -49,3 +49,29 @@ async def test_tables_created(engine):
         names = await conn.run_sync(_tables)
 
     assert {"users", "studios", "resources", "bookings", "payments", "consents"} <= names
+
+
+def test_landing_lists_service_prices():
+    from pathlib import Path
+
+    html = (Path(__file__).resolve().parents[1] / "landing" / "index.html").read_text(encoding="utf-8")
+    assert "Стоимость услуг" in html
+    assert "{{TARIFF_STARTER_RUB}}" in html
+    assert "2&nbsp;000" in html
+    assert "id=\"prices\"" in html
+
+
+async def test_landing_http_substitutes_tariffs(engine):
+    from aiohttp.test_utils import TestClient, TestServer
+
+    from src.web.app import create_web_app
+
+    app = create_web_app(bot=None, session_maker=get_session_maker(engine))
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get("/")
+        assert resp.status == 200
+        text = await resp.text()
+        assert "490" in text
+        assert "990" in text
+        assert "2\xa0000" in text or "2&nbsp;000" in text
+        assert "Стоимость услуг" in text

@@ -3,27 +3,184 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Бот записи для фотостудии — слот, предоплата, напоминание</title>
-  <meta name="description" content="Бот записи для фотостудии в Telegram: свободный почасовой слот, бронь по ссылке, предоплата, напоминание. Не CRM.">
+  <title>Studio-book — запись и предоплата аренды фотозала</title>
+  <meta name="description" content="Почасовая аренда фотозала: запись в Telegram, предоплата, чек 54-ФЗ. Подписка для студии 490 и 990 ₽/мес. Публичный прайс услуг.">
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; color: #111; }
-    a.btn { display: inline-block; background: #2AABEE; color: #fff; text-decoration: none; padding: .7rem 1.2rem; border-radius: .5rem; }
-    .price { display: flex; gap: 1rem; flex-wrap: wrap; }
-    .card { border: 1px solid #ddd; border-radius: .5rem; padding: 1rem; flex: 1; min-width: 9rem; }
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      max-width: 44rem;
+      margin: 0 auto;
+      padding: 1.5rem 1rem 3rem;
+      line-height: 1.55;
+      color: #111;
+      background: #fff;
+    }
+    h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .75rem; }
+    h2 { font-size: 1.2rem; margin: 2rem 0 .6rem; }
+    p, li { font-size: 1rem; }
+    a { color: #1565c0; }
+    a.btn {
+      display: inline-block;
+      background: #2AABEE;
+      color: #fff;
+      text-decoration: none;
+      padding: .7rem 1.2rem;
+      border-radius: .5rem;
+      font-weight: 600;
+    }
+    .lead { font-size: 1.05rem; color: #222; }
+    .muted { color: #444; font-size: .95rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: .75rem 0 1rem;
+      font-size: .95rem;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: .55rem .65rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #f4f6f8; }
+    td.price { white-space: nowrap; font-weight: 650; }
+    .note {
+      background: #f7f7f7;
+      border: 1px solid #e2e2e2;
+      border-radius: .5rem;
+      padding: .8rem 1rem;
+      margin: 1rem 0;
+    }
+    footer {
+      margin-top: 2.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid #ddd;
+      font-size: .9rem;
+      color: #333;
+    }
   </style>
 </head>
 <body>
-  <h1>Бот записи для фотостудии</h1>
-  <p>Слот → ссылка в Telegram → предоплата → напоминание. Без CRM и без конструктора ботов.</p>
-  <p><a class="btn" href="{{BOT_LINK}}">Открыть бота</a></p>
-  <h2>Для кого</h2>
-  <p>Самозанятые и микростудии 1–5 человек. Клиенты живут в Telegram, YCLIENTS плохо ложится на почасовую аренду зала.</p>
-  <h2>Цена</h2>
-  <div class="price">
-    <div class="card"><b>Free</b><br>1 зал, 30 записей/мес</div>
-    <div class="card"><b>490 ₽/мес</b><br>вход, 1 ресурс</div>
-    <div class="card"><b>990 ₽/мес</b><br>до 6 залов</div>
-  </div>
-  <p>Чек 54-ФЗ — через Prodamus. Персональные данные только на серверах в РФ.</p>
+  <header>
+    <h1>Studio-book: запись в фотостудию и предоплата зала</h1>
+    <p class="lead">Клиент выбирает зал и час в Telegram, вносит предоплату, получает чек. Студия видит бронь и не держит слот вручную. Это не CRM и не запись в салон красоты.</p>
+    <p><a class="btn" href="{{BOT_LINK}}">Открыть Telegram-бота</a></p>
+    <p class="muted">Бот: <a href="{{BOT_LINK}}">t.me/{{BOT_USERNAME}}</a></p>
+  </header>
+
+  <section>
+    <h2>Чем занимаемся</h2>
+    <p>Принимаем оплату за <strong>почасовую аренду фотозала</strong> (циклорама, интерьер, грим) и за <strong>доступ студии к боту записи</strong>. Услуга оказывается офлайн: клиент приходит в зал в оплаченный интервал. Онлайн — только запись, предоплата и напоминания.</p>
+    <ul>
+      <li>Запись: дата → длительность → слот → предоплата 50% или 100%.</li>
+      <li>Неоплаченный слот сгорает (от 20 минут до 24 часов — правило студии).</li>
+      <li>Напоминание клиенту и студии за 24 часа и за 2 часа.</li>
+      <li>Отмена в боте: полный возврат, если до слота не меньше срока студии (24 / 72 / 120 ч).</li>
+    </ul>
+  </section>
+
+  <section id="prices">
+    <h2>Стоимость услуг</h2>
+    <p>Цены ниже — публичный прайс. Счёт выставляется в боте, чек 54-ФЗ формирует облачная касса Prodamus.</p>
+
+    <h3>1. Предоплата аренды зала (платит клиент / фотограф)</h3>
+    <p class="muted">Стоимость часа студия указывает в боте. Если студия не задала свою сетку, действуют тарифы пилота:</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Услуга</th>
+          <th>Объём</th>
+          <th>Цена</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Аренда зала, будни 10:00–22:00</td>
+          <td>1 час</td>
+          <td class="price">2&nbsp;000 ₽</td>
+        </tr>
+        <tr>
+          <td>Аренда зала, выходные</td>
+          <td>1 час</td>
+          <td class="price">2&nbsp;400 ₽</td>
+        </tr>
+        <tr>
+          <td>Аренда зала, ночь с 22:00</td>
+          <td>1 час</td>
+          <td class="price">3&nbsp;000 ₽</td>
+        </tr>
+        <tr>
+          <td>Аренда зала от 2 часов (пакет)</td>
+          <td>2 часа, будни</td>
+          <td class="price">4&nbsp;000 ₽</td>
+        </tr>
+        <tr>
+          <td>Одиночный час, если минимум студии — 2 часа</td>
+          <td>1 час, наценка 50%</td>
+          <td class="price">3&nbsp;000 ₽</td>
+        </tr>
+        <tr>
+          <td>Предоплата брони</td>
+          <td>50% или 100% от стоимости интервала</td>
+          <td class="price">от 1&nbsp;000 ₽</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>2. Подписка студии на бот записи (платит владелец)</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Тариф</th>
+          <th>Что входит</th>
+          <th>Цена</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Free</td>
+          <td>1 зал, {{FREE_BOOKINGS_PER_MONTH}} записей в месяц</td>
+          <td class="price">0 ₽</td>
+        </tr>
+        <tr>
+          <td>Старт</td>
+          <td>1 зал, записи без лимита</td>
+          <td class="price">{{TARIFF_STARTER_RUB}} ₽ / 30 дней</td>
+        </tr>
+        <tr>
+          <td>Плюс</td>
+          <td>до 6 залов, записи без лимита</td>
+          <td class="price">{{TARIFF_PLUS_RUB}} ₽ / 30 дней</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="muted">Комиссию эквайринга платит плательщик по тарифу кассы. Процент с оборота студии мы не берём.</p>
+  </section>
+
+  <section>
+    <h2>Как оплатить</h2>
+    <ol>
+      <li>Откройте бота <a href="{{BOT_LINK}}">t.me/{{BOT_USERNAME}}</a>.</li>
+      <li>Клиент: ссылка записи студии → слот → оплата картой / СБП по счёту Prodamus.</li>
+      <li>Владелец студии: команда /studio → «Тариф» → Старт или Плюс.</li>
+    </ol>
+    <div class="note">
+      Возврат при отмене студией — полная сумма предоплаты. При отмене клиентом позже срока студии удерживается доля предоплаты как обеспечительный платёж за простой зала (по умолчанию 50% при отмене менее чем за 72 часа). Чек на возврат — через ту же кассу.
+    </div>
+  </section>
+
+  <section>
+    <h2>Документы и данные</h2>
+    <p>Персональные данные обрабатываются на сервере в РФ (152-ФЗ). Согласие на обработку клиент подтверждает в боте отдельным шагом, не в оферте.</p>
+    <p>Оплата и фискализация — Prodamus (54-ФЗ). Мы не принимаем оплату «переводом на карту» через этот сайт.</p>
+  </section>
+
+  <footer>
+    <p><strong>Контакт:</strong> Telegram <a href="{{BOT_LINK}}">@{{BOT_USERNAME}}</a></p>
+    <p>Канал, откуда покупатели узнают о услугах: эта страница и Telegram-бот. Других витрин (VK, Instagram) нет.</p>
+    <p>Studio-book · почасовая аренда фотозала · запись и предоплата в Telegram</p>
+  </footer>
 </body>
 </html>
