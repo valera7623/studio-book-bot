@@ -1,0 +1,13 @@
+# Запись в фотостудию: SQLite в ./data
+# Обязательно: .env в корне с BOT_TOKEN=...
+services:
+  bot:
+    image: studio-book:local
+    build: .
+    env_file:
+      - .env
+    environment:
+      SQLITE_PATH: /app/data/studio_book.db
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
