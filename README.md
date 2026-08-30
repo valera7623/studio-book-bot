@@ -13,7 +13,7 @@ Telegram-бот почасовой записи для фотостудий (Р�
 - Предоплата 50/100% и подписка владельца через Prodamus (чек 54-ФЗ); webhook идемпотентен; возврат при отмене по правилу 24–120 ч.
 - Напоминания за 24 ч и за 2 ч, истечение hold (20 мин – 24 ч на студии). Бэкап SQLite в `data/backups/`.
 - Студийный час: шаг 30/60, минимум 1/2 ч, буфер уборки, наценка за одиночный час, будни/выходные/ночь.
-- Free / 490 / 990. Публичный лендинг с прайсом (для кассы и покупателей): `landing/index.html`, HTTP `:8088`, якорь `#prices`.
+- Free / 490 / 990. Публичный лендинг с прайсом: `https://studiobook.com.ru/` (якорь `#prices`). Traefik → бот `:8088`, см. [deploy/traefik-studiobook.yml](deploy/traefik-studiobook.yml).
 - Проверка боли: [docs/pain_check.md](docs/pain_check.md). Аутрич: [docs/outreach.md](docs/outreach.md).
 
 ## Доступ

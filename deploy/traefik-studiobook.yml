@@ -1,0 +1,34 @@
+# Install: copy to /home/valera/traefik/dynamic/studiobook.yml
+# Traefik :80/:443 -> host :8088 via agentops-edge gateway 172.19.0.1
+
+http:
+  routers:
+    studiobook:
+      rule: "Host(`studiobook.com.ru`)"
+      priority: 1
+      entryPoints:
+        - websecure
+      service: studiobook
+      tls:
+        certResolver: letsencrypt
+
+    studiobook-http:
+      rule: "Host(`studiobook.com.ru`)"
+      entryPoints:
+        - web
+      service: studiobook
+      middlewares:
+        - studiobook-redirect-https
+
+  services:
+    studiobook:
+      loadBalancer:
+        servers:
+          - url: "http://172.19.0.1:8088"
+
+  middlewares:
+    studiobook-redirect-https:
+      redirectScheme:
+        scheme: https
+        port: "443"
+        permanent: true
