@@ -40,6 +40,9 @@ async def _seed_resource(session, *, slug="demo-studio", telegram_id=1001) -> Re
         studio_id=studio.id,
         name="Циклорама",
         duration_min=60,
+        slot_step_min=60,
+        min_duration_min=60,
+        buffer_min=0,
         timezone="Europe/Moscow",
         work_start=time(10, 0),
         work_end=time(12, 0),
@@ -238,3 +241,273 @@ async def test_prodamus_signature_roundtrip():
 
 def test_slugify_russian():
     assert slugify("Циклорама Свет") == "ciklorama-svet"
+
+
+async def test_hold_ttl_uses_studio_minutes(session):
+    from src.database.base import utcnow
+
+    resource = await _seed_resource(session, slug="ttl-studio", telegram_id=6001)
+    studio = await session.get(Studio, resource.studio_id)
+    studio.hold_ttl_minutes = 60
+    await session.commit()
+    booking = await create_hold(
+        session,
+        resource=resource,
+        starts_at=_slot_start(),
+        ends_at=_slot_start() + timedelta(hours=1),
+        client_telegram_id=1,
+        client_name="A",
+        client_phone=None,
+        client_user_id=None,
+        studio=studio,
+    )
+    assert booking is not None
+    exp = booking.hold_expires_at
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    delta = exp - utcnow()
+    assert timedelta(minutes=59) <= delta <= timedelta(minutes=61)
+
+
+async def test_overlapping_durations_rejected(session):
+    resource = await _seed_resource(session, slug="overlap", telegram_id=6002)
+    start = datetime(2026, 9, 1, 10, 0, tzinfo=ZoneInfo("Europe/Moscow")).astimezone(timezone.utc)
+    first = await create_hold(
+        session,
+        resource=resource,
+        starts_at=start,
+        ends_at=start + timedelta(hours=2),
+        client_telegram_id=1,
+        client_name="A",
+        client_phone=None,
+        client_user_id=None,
+    )
+    assert first is not None
+    second = await create_hold(
+        session,
+        resource=resource,
+        starts_at=start + timedelta(hours=1),
+        ends_at=start + timedelta(hours=2),
+        client_telegram_id=2,
+        client_name="B",
+        client_phone=None,
+        client_user_id=None,
+    )
+    assert second is None
+
+
+async def test_buffer_blocks_neighbor_start(session):
+    resource = await _seed_resource(session, slug="buffer", telegram_id=6003)
+    resource.buffer_min = 10
+    resource.work_end = time(14, 0)
+    await session.commit()
+    tz = ZoneInfo("Europe/Moscow")
+    day = date(2026, 9, 2)
+    start_local = datetime(2026, 9, 2, 10, 0, tzinfo=tz)
+    await create_hold(
+        session,
+        resource=resource,
+        starts_at=start_local,
+        ends_at=start_local + timedelta(hours=1),
+        client_telegram_id=1,
+        client_name="A",
+        client_phone=None,
+        client_user_id=None,
+    )
+    free = await available_slots(session, resource, day, 60)
+    hours = {s.starts_at.astimezone(tz).hour for s in free}
+    assert 10 not in hours
+    assert 11 not in hours
+    assert 12 in hours
+
+
+async def test_night_tariff_moscow():
+    from src.services.slots import quote_price_rub
+
+    resource = Resource(
+        studio_id=1,
+        name="Зал",
+        duration_min=60,
+        timezone="Europe/Moscow",
+        work_start=time(10, 0),
+        work_end=time(23, 0),
+        price_rub=2000,
+        night_price_rub=3000,
+        night_start=time(22, 0),
+        min_duration_min=60,
+        hour_markup_percent=50,
+    )
+    day = datetime(2026, 9, 2, 22, 0, tzinfo=ZoneInfo("Europe/Moscow"))
+    assert quote_price_rub(resource, day, 60) == 3000
+    day_noon = datetime(2026, 9, 2, 12, 0, tzinfo=ZoneInfo("Europe/Moscow"))
+    assert quote_price_rub(resource, day_noon, 60) == 2000
+    saturday = datetime(2026, 9, 5, 12, 0, tzinfo=ZoneInfo("Europe/Moscow"))
+    resource.weekend_price_rub = 2500
+    assert quote_price_rub(resource, saturday, 60) == 2500
+
+
+async def test_one_hour_markup_when_min_two():
+    from src.services.slots import allowed_durations, quote_price_rub
+
+    resource = Resource(
+        studio_id=1,
+        name="Циклорама",
+        duration_min=120,
+        min_duration_min=120,
+        slot_step_min=60,
+        timezone="Europe/Moscow",
+        price_rub=2200,
+        hour_markup_percent=50,
+    )
+    assert 60 in allowed_durations(resource)
+    assert 120 in allowed_durations(resource)
+    noon = datetime(2026, 9, 2, 12, 0, tzinfo=ZoneInfo("Europe/Moscow"))
+    assert quote_price_rub(resource, noon, 60) == 3300
+    assert quote_price_rub(resource, noon, 120) == 4400
+
+
+async def test_prepay_percent_and_cancel_refund():
+    from src.database.models.studio import Studio
+    from src.services.cancellations import refund_for_cancel
+    from src.services.slots import prepay_amount_rub
+
+    studio = Studio(
+        slug="x",
+        name="x",
+        owner_id=1,
+        owner_telegram_id=1,
+        prepay_percent=50,
+        cancel_free_hours=72,
+        late_cancel_retain_percent=50,
+    )
+    assert prepay_amount_rub(studio, 1000) == 500
+    booking = Booking(
+        resource_id=1,
+        studio_id=1,
+        client_telegram_id=1,
+        client_name="A",
+        starts_at=datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc),
+        ends_at=datetime(2026, 10, 1, 13, 0, tzinfo=timezone.utc),
+        status=STATUS_PAID,
+    )
+    far = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    amount, reason = refund_for_cancel(studio, booking, 500, by="client", now=far)
+    assert amount == 500 and reason == "free_cancel"
+    late = datetime(2026, 10, 1, 10, 0, tzinfo=timezone.utc)
+    amount, reason = refund_for_cancel(studio, booking, 500, by="client", now=late)
+    assert amount == 250 and reason == "late_cancel"
+    amount, reason = refund_for_cancel(studio, booking, 500, by="owner", now=late)
+    assert amount == 500 and reason == "owner_cancel"
+
+
+async def test_client_cancel_marks_refunded(session):
+    from src.database.models.payment import PAYMENT_REFUNDED
+    from src.services.cancellations import cancel_booking
+    from src.services.payments import apply_paid_order, create_slot_invoice
+
+    resource = await _seed_resource(session, slug="cx-studio", telegram_id=7001)
+    studio = await session.get(Studio, resource.studio_id)
+    studio.cancel_free_hours = 72
+    await session.commit()
+    start = datetime.now(timezone.utc) + timedelta(days=5)
+    booking = await create_hold(
+        session,
+        resource=resource,
+        starts_at=start,
+        ends_at=start + timedelta(hours=1),
+        client_telegram_id=9,
+        client_name="Клиент",
+        client_phone=None,
+        client_user_id=None,
+        quoted_price_rub=1000,
+        prepay_amount_rub=1000,
+        studio=studio,
+    )
+    payment = await create_slot_invoice(session, booking, 1000)
+    await apply_paid_order(session, payment.prodamus_invoice_id)
+    await session.refresh(booking)
+    result = await cancel_booking(session, booking, studio, by="client")
+    assert result.ok
+    assert result.refund_rub == 1000
+    await session.refresh(payment)
+    assert payment.status == PAYMENT_REFUNDED
+    await session.refresh(booking)
+    assert booking.status == STATUS_CANCELLED
+
+
+async def test_block_hides_slot(session):
+    from src.services.slots import create_block
+
+    resource = await _seed_resource(session, slug="block-studio", telegram_id=8001)
+    tz = ZoneInfo("Europe/Moscow")
+    day = date(2026, 9, 2)
+    start_local = datetime(2026, 9, 2, 10, 0, tzinfo=tz)
+    block = await create_block(
+        session,
+        resource=resource,
+        starts_at=start_local,
+        ends_at=start_local + timedelta(hours=1),
+        owner_telegram_id=8001,
+    )
+    assert block is not None
+    free = await available_slots(session, resource, day, 60)
+    hours = {s.starts_at.astimezone(tz).hour for s in free}
+    assert 10 not in hours
+    assert 11 in hours
+
+
+async def test_reminders_24h_and_2h(session):
+    from src.database.base import utcnow
+    from src.services.jobs import collect_due_reminders
+
+    resource = await _seed_resource(session, slug="rem-studio", telegram_id=9001)
+    now = utcnow()
+    far = Booking(
+        resource_id=resource.id,
+        studio_id=resource.studio_id,
+        client_telegram_id=1,
+        client_name="A",
+        starts_at=now + timedelta(hours=10),
+        ends_at=now + timedelta(hours=11),
+        status=STATUS_PAID,
+    )
+    near = Booking(
+        resource_id=resource.id,
+        studio_id=resource.studio_id,
+        client_telegram_id=2,
+        client_name="B",
+        starts_at=now + timedelta(hours=1, minutes=30),
+        ends_at=now + timedelta(hours=2, minutes=30),
+        status=STATUS_PAID,
+    )
+    session.add_all([far, near])
+    await session.commit()
+    due = await collect_due_reminders(session, now)
+    kinds = {b.client_name: k for b, k in due}
+    assert kinds["A"] == "24h"
+    assert kinds["B"] == "2h"
+
+
+async def test_refund_webhook_idempotent(session):
+    from src.database.models.payment import PAYMENT_REFUNDED
+    from src.services.payments import apply_paid_order, apply_refund, create_slot_invoice
+
+    resource = await _seed_resource(session, slug="ref-studio", telegram_id=9101)
+    booking = await create_hold(
+        session,
+        resource=resource,
+        starts_at=_slot_start(),
+        ends_at=_slot_start() + timedelta(hours=1),
+        client_telegram_id=9,
+        client_name="Клиент",
+        client_phone=None,
+        client_user_id=None,
+    )
+    payment = await create_slot_invoice(session, booking, 1000)
+    await apply_paid_order(session, payment.prodamus_invoice_id)
+    first = await apply_refund(session, payment, 1000)
+    second = await apply_refund(session, payment, 1000)
+    assert first.status == PAYMENT_REFUNDED
+    assert second.id == first.id
+    again = await apply_paid_order(session, payment.prodamus_invoice_id)
+    assert again.status == PAYMENT_REFUNDED

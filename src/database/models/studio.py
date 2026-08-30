@@ -37,6 +37,10 @@ class Studio(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    hold_ttl_minutes: Mapped[int] = mapped_column(Integer, default=20)
+    prepay_percent: Mapped[int] = mapped_column(Integer, default=100)
+    cancel_free_hours: Mapped[int] = mapped_column(Integer, default=72)
+    late_cancel_retain_percent: Mapped[int] = mapped_column(Integer, default=50)
 
     owner: Mapped["User"] = relationship(back_populates="studios")
     resources: Mapped[List["Resource"]] = relationship(
@@ -62,12 +66,19 @@ class Resource(Base):
     )
     name: Mapped[str] = mapped_column(String(128))
     duration_min: Mapped[int] = mapped_column(Integer, default=60)
+    slot_step_min: Mapped[int] = mapped_column(Integer, default=60)
+    min_duration_min: Mapped[int] = mapped_column(Integer, default=60)
+    buffer_min: Mapped[int] = mapped_column(Integer, default=5)
+    hour_markup_percent: Mapped[int] = mapped_column(Integer, default=50)
     timezone: Mapped[str] = mapped_column(String(64), default="Europe/Moscow")
     work_start: Mapped[time] = mapped_column(Time, default=time(10, 0))
     work_end: Mapped[time] = mapped_column(Time, default=time(22, 0))
     weekdays: Mapped[str] = mapped_column(String(32), default="1,2,3,4,5,6,7")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     price_rub: Mapped[int] = mapped_column(Integer, default=0)
+    weekend_price_rub: Mapped[int] = mapped_column(Integer, default=0)
+    night_price_rub: Mapped[int] = mapped_column(Integer, default=0)
+    night_start: Mapped[time] = mapped_column(Time, default=time(22, 0))
 
     studio: Mapped["Studio"] = relationship(back_populates="resources")
     bookings: Mapped[List["Booking"]] = relationship(

@@ -4,7 +4,8 @@ from zoneinfo import ZoneInfo
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from src.services.slots import Slot
+from src.database.models.studio import Resource
+from src.services.slots import Slot, allowed_durations, quote_price_rub
 
 
 def profile_keyboard() -> InlineKeyboardMarkup:
@@ -28,33 +29,76 @@ def owner_cabinet_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="📋 Брони", callback_data="ow:book")
     builder.button(text="🔗 Ссылка записи", callback_data="ow:link")
+    builder.button(text="📣 Тексты", callback_data="ow:txt")
     builder.button(text="🕒 Часы работы", callback_data="ow:hr")
     builder.button(text="💰 Цена часа", callback_data="ow:price")
-    builder.button(text="➕ Второй ресурс", callback_data="ow:res")
+    builder.button(text="📐 Сетка цен", callback_data="ow:grid")
+    builder.button(text="⚙️ Правила", callback_data="ow:rules")
+    builder.button(text="⏱ Слоты", callback_data="ow:slot")
+    builder.button(text="🚫 Закрыть интервал", callback_data="ow:block")
+    builder.button(text="➕ Зал", callback_data="ow:res")
     builder.button(text="💳 Тариф", callback_data="ow:tariff")
     builder.button(text="📅 iCal", callback_data="ow:ical")
     builder.adjust(2)
     return builder.as_markup()
 
 
-def date_keyboard(studio_id: int, days: list[date], tz_name: str) -> InlineKeyboardMarkup:
+def resource_keyboard(studio_id: int, resources: list[Resource]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for resource in resources:
+        builder.button(text=resource.name, callback_data=f"bk:r:{studio_id}:{resource.id}")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def date_keyboard(resource_id: int, days: list[date], tz_name: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for day in days:
         label = day.strftime("%d.%m (%a)")
-        builder.button(text=label, callback_data=f"bk:d:{studio_id}:{day.isoformat()}")
+        builder.button(text=label, callback_data=f"bk:d:{resource_id}:{day.isoformat()}")
     builder.adjust(2)
     return builder.as_markup()
 
 
-def slot_keyboard(resource_id: int, slots: list[Slot], tz_name: str) -> InlineKeyboardMarkup:
+def duration_keyboard(resource: Resource, day_iso: str, sample_start: datetime) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for minutes in allowed_durations(resource):
+        hours = minutes / 60
+        price = quote_price_rub(resource, sample_start, minutes)
+        if hours == int(hours):
+            label = f"{int(hours)} ч"
+        else:
+            label = f"{minutes} мин"
+        if price:
+            label = f"{label} · {price} ₽"
+        if minutes < (resource.min_duration_min or 60):
+            label = f"{label} *"
+        builder.button(text=label, callback_data=f"bk:n:{resource.id}:{day_iso}:{minutes}")
+    builder.button(text="↩️ Другая дата", callback_data="bk:back")
+    builder.adjust(2)
+    return builder.as_markup()
+
+
+def slot_keyboard(
+    resource_id: int,
+    slots: list[Slot],
+    tz_name: str,
+    duration_min: int,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     tz = ZoneInfo(tz_name)
     for slot in slots[:20]:
         local: datetime = slot.starts_at.astimezone(tz)
         ts = int(slot.starts_at.timestamp())
-        builder.button(text=local.strftime("%H:%M"), callback_data=f"bk:s:{resource_id}:{ts}")
+        label = local.strftime("%H:%M")
+        if slot.price_rub:
+            label = f"{label} {slot.price_rub}₽"
+        builder.button(
+            text=label,
+            callback_data=f"bk:s:{resource_id}:{ts}:{duration_min}",
+        )
     builder.button(text="↩️ Другая дата", callback_data="bk:back")
-    builder.adjust(4)
+    builder.adjust(3)
     return builder.as_markup()
 
 
@@ -66,9 +110,19 @@ def consent_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def pay_keyboard(url: str) -> InlineKeyboardMarkup:
+def pay_keyboard(url: str, booking_id: int | None = None) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="💳 Оплатить", url=url)
+    if booking_id:
+        builder.button(text="❌ Отменить бронь", callback_data=f"bk:cx:{booking_id}")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def client_booking_keyboard(booking_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="❌ Отменить бронь", callback_data=f"bk:cx:{booking_id}")
+    builder.adjust(1)
     return builder.as_markup()
 
 
@@ -76,6 +130,53 @@ def bookings_keyboard(items: list[tuple[int, str]]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for booking_id, label in items:
         builder.button(text=f"❌ {label}", callback_data=f"ow:c:{booking_id}")
+    builder.button(text="↩️ Кабинет", callback_data="ow:cab")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def owner_resource_pick_keyboard(resources: list[Resource], prefix: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for resource in resources:
+        builder.button(text=resource.name, callback_data=f"{prefix}:{resource.id}")
+    builder.button(text="↩️ Кабинет", callback_data="ow:cab")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def rules_keyboard(studio) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for minutes, label in ((20, "20 мин"), (60, "1 ч"), (720, "12 ч"), (1440, "24 ч")):
+        mark = "· " if studio.hold_ttl_minutes == minutes else ""
+        builder.button(text=f"{mark}оплата {label}", callback_data=f"ow:hold:{minutes}")
+    builder.button(text=("· " if studio.prepay_percent == 50 else "") + "предоплата 50%", callback_data="ow:prepay:50")
+    builder.button(text=("· " if studio.prepay_percent == 100 else "") + "предоплата 100%", callback_data="ow:prepay:100")
+    for hours in (24, 72, 120):
+        mark = "· " if studio.cancel_free_hours == hours else ""
+        builder.button(text=f"{mark}отмена {hours} ч", callback_data=f"ow:cxh:{hours}")
+    builder.button(text="↩️ Кабинет", callback_data="ow:cab")
+    builder.adjust(2)
+    return builder.as_markup()
+
+
+def slot_settings_keyboard(resource: Resource) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text=("· " if resource.slot_step_min == 30 else "") + "шаг 30 мин", callback_data="ow:step:30")
+    builder.button(text=("· " if resource.slot_step_min == 60 else "") + "шаг 60 мин", callback_data="ow:step:60")
+    builder.button(text=("· " if resource.min_duration_min == 60 else "") + "мин. 1 ч", callback_data="ow:mind:60")
+    builder.button(text=("· " if resource.min_duration_min == 120 else "") + "мин. 2 ч", callback_data="ow:mind:120")
+    builder.button(text=("· " if resource.buffer_min == 5 else "") + "буфер 5", callback_data="ow:buf:5")
+    builder.button(text=("· " if resource.buffer_min == 10 else "") + "буфер 10", callback_data="ow:buf:10")
+    builder.button(text="↩️ Кабинет", callback_data="ow:cab")
+    builder.adjust(2)
+    return builder.as_markup()
+
+
+def grid_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Будни (база)", callback_data="ow:price")
+    builder.button(text="Выходные", callback_data="ow:wknd")
+    builder.button(text="Ночь с 22:00", callback_data="ow:night")
     builder.button(text="↩️ Кабинет", callback_data="ow:cab")
     builder.adjust(1)
     return builder.as_markup()

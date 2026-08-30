@@ -25,6 +25,15 @@ async def get_primary_resource(session: AsyncSession, studio_id: int) -> Resourc
     return (await session.execute(stmt)).scalars().first()
 
 
+async def list_active_resources(session: AsyncSession, studio_id: int) -> list[Resource]:
+    stmt = (
+        select(Resource)
+        .where(Resource.studio_id == studio_id, Resource.is_active.is_(True))
+        .order_by(Resource.id.asc())
+    )
+    return list((await session.execute(stmt)).scalars().all())
+
+
 async def unique_slug(session: AsyncSession, name: str) -> str:
     base = slugify(name)
     candidate = base

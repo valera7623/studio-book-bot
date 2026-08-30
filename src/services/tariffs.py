@@ -17,7 +17,7 @@ from src.database.models.studio import (
 
 def resource_limit_for(tariff: str) -> int:
     if tariff == TARIFF_PLUS:
-        return max(2, settings.FREE_RESOURCE_LIMIT + 1)
+        return max(settings.PLUS_RESOURCE_LIMIT, settings.FREE_RESOURCE_LIMIT + 1)
     return settings.FREE_RESOURCE_LIMIT
 
 
@@ -76,8 +76,8 @@ async def can_add_resource(session: AsyncSession, studio: Studio) -> tuple[bool,
     if studio.tariff != TARIFF_PLUS:
         return (
             False,
-            f"На тарифе «{tariff_label(studio.tariff)}» доступен 1 ресурс. "
-            f"Второй зал — тариф Плюс {settings.TARIFF_PLUS_RUB} ₽/мес.",
+            f"На тарифе «{tariff_label(studio.tariff)}» доступен 1 зал. "
+            f"До 6 залов — тариф Плюс {settings.TARIFF_PLUS_RUB} ₽/мес.",
         )
     return False, "Лимит ресурсов исчерпан."
 

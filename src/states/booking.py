@@ -8,7 +8,10 @@ class OwnerStates(StatesGroup):
     waiting_price = State()
     waiting_hours_edit = State()
     waiting_price_edit = State()
+    waiting_weekend_price = State()
+    waiting_night_price = State()
     waiting_extra_resource = State()
+    waiting_block_interval = State()
 
 
 class BookingStates(StatesGroup):

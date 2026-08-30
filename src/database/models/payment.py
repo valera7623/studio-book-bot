@@ -47,6 +47,11 @@ class Payment(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    refunded_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    refund_amount_rub: Mapped[int] = mapped_column(Integer, default=0)
 
     booking: Mapped[Optional["Booking"]] = relationship(back_populates="payments")
     studio: Mapped[Optional["Studio"]] = relationship(back_populates="payments")

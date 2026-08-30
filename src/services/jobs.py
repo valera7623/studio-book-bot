@@ -24,30 +24,55 @@ async def job_expire_holds(session_maker) -> None:
             logger.info("expired holds: %s", n)
 
 
+async def collect_due_reminders(session, now=None) -> list[tuple[Booking, str]]:
+    """Пары (бронь, '24h'|'2h') для ещё не отправленных окон."""
+    now = now or utcnow()
+    horizon_24 = now + timedelta(hours=settings.REMINDER_HOURS)
+    horizon_2 = now + timedelta(hours=settings.REMINDER_2H_HOURS)
+    stmt = select(Booking).where(
+        Booking.status == STATUS_PAID,
+        Booking.starts_at > now,
+        Booking.starts_at <= horizon_24,
+    )
+    rows = (await session.execute(stmt)).scalars().all()
+    due: list[tuple[Booking, str]] = []
+    for booking in rows:
+        start = booking.starts_at
+        if (
+            booking.reminder_2h_sent_at is None
+            and start <= horizon_2
+        ):
+            due.append((booking, "2h"))
+        elif (
+            booking.reminder_sent_at is None
+            and start > horizon_2
+            and start <= horizon_24
+        ):
+            due.append((booking, "24h"))
+    return due
+
+
 async def job_reminders(bot, session_maker) -> None:
-    horizon = utcnow() + timedelta(hours=settings.REMINDER_HOURS)
     now = utcnow()
     async with session_maker() as session:
-        stmt = select(Booking).where(
-            Booking.status == STATUS_PAID,
-            Booking.reminder_sent_at.is_(None),
-            Booking.starts_at > now,
-            Booking.starts_at <= horizon,
-        )
-        rows = (await session.execute(stmt)).scalars().all()
-        for booking in rows:
+        due = await collect_due_reminders(session, now)
+        for booking, kind in due:
             studio = await session.get(Studio, booking.studio_id)
             resource = await session.get(Resource, booking.resource_id)
             if not studio or not resource:
                 continue
-            text = "🔔 Напоминание о съёмке\n" + booking_summary(booking, studio, resource)
+            label = "за 2 часа" if kind == "2h" else "за 24 часа"
+            text = f"🔔 Напоминание о съёмке ({label})\n" + booking_summary(booking, studio, resource)
             for chat_id in (booking.client_telegram_id, studio.owner_telegram_id):
                 try:
                     await bot.send_message(chat_id, text)
                 except Exception:
                     logger.exception("reminder send %s", chat_id)
-            booking.reminder_sent_at = now
-        if rows:
+            if kind == "2h":
+                booking.reminder_2h_sent_at = now
+            else:
+                booking.reminder_sent_at = now
+        if due:
             await session.commit()
 
 

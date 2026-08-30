@@ -11,6 +11,7 @@ from src.database.models.payment import (
     KIND_SLOT_PREPAY,
     PAYMENT_PAID,
     PAYMENT_PENDING,
+    PAYMENT_REFUNDED,
     Payment,
 )
 from src.database.models.studio import TARIFF_PLUS, TARIFF_STARTER, Studio
@@ -84,7 +85,7 @@ async def apply_paid_order(session: AsyncSession, order_id: str) -> Payment | No
     payment = (await session.execute(stmt)).scalar_one_or_none()
     if payment is None:
         return None
-    if payment.status == PAYMENT_PAID:
+    if payment.status in (PAYMENT_PAID, PAYMENT_REFUNDED):
         return payment
 
     payment.status = PAYMENT_PAID
@@ -115,4 +116,22 @@ async def apply_paid_order(session: AsyncSession, order_id: str) -> Payment | No
 
     await session.commit()
     await session.refresh(payment)
+    return payment
+
+
+async def apply_refund(
+    session: AsyncSession,
+    payment: Payment,
+    amount_rub: int,
+    *,
+    commit: bool = True,
+) -> Payment:
+    if payment.status == PAYMENT_REFUNDED:
+        return payment
+    payment.status = PAYMENT_REFUNDED
+    payment.refunded_at = utcnow()
+    payment.refund_amount_rub = amount_rub
+    if commit:
+        await session.commit()
+        await session.refresh(payment)
     return payment

@@ -34,10 +34,14 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "bot.log"
 
-    HOLD_TTL_MINUTES: int = 15
+    HOLD_TTL_MINUTES: int = 20
+    HOLD_TTL_MIN: int = 20
+    HOLD_TTL_MAX: int = 24 * 60
     REMINDER_HOURS: int = 24
+    REMINDER_2H_HOURS: int = 2
 
     FREE_RESOURCE_LIMIT: int = 1
+    PLUS_RESOURCE_LIMIT: int = 6
     FREE_BOOKINGS_PER_MONTH: int = 30
     TARIFF_STARTER_RUB: int = 490
     TARIFF_PLUS_RUB: int = 990
@@ -84,6 +88,10 @@ class Settings(BaseSettings):
     @property
     def consent_pdn_path(self) -> Path:
         return PROJECT_ROOT / "data" / "legal" / "consent_pdn.md"
+
+    @property
+    def cancel_rules_path(self) -> Path:
+        return PROJECT_ROOT / "data" / "legal" / "cancel_rules.md"
 
 
 settings = Settings()

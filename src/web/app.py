@@ -9,11 +9,11 @@ from aiohttp import web
 from sqlalchemy import select
 
 from src.config import PROJECT_ROOT, settings
-from src.database.models.booking import STATUS_PAID, Booking
+from src.database.models.booking import STATUS_BLOCKED, STATUS_PAID, Booking
 from src.services import prodamus
 from src.services.ical import build_calendar
 from src.services.payments import apply_paid_order
-from src.services.studios import get_primary_resource, get_studio_by_slug
+from src.services.studios import get_studio_by_slug, list_active_resources
 
 logger = logging.getLogger(__name__)
 
@@ -50,18 +50,18 @@ async def ical_feed(request: web.Request) -> web.Response:
         studio = await get_studio_by_slug(session, slug)
         if studio is None:
             raise web.HTTPNotFound()
-        resource = await get_primary_resource(session, studio.id)
-        if resource is None:
+        resources = await list_active_resources(session, studio.id)
+        if not resources:
             raise web.HTTPNotFound()
         rows = (
             await session.execute(
                 select(Booking).where(
                     Booking.studio_id == studio.id,
-                    Booking.status == STATUS_PAID,
+                    Booking.status.in_((STATUS_PAID, STATUS_BLOCKED)),
                 )
             )
         ).scalars().all()
-        body = build_calendar(studio, resource, list(rows))
+        body = build_calendar(studio, resources, list(rows))
     return web.Response(
         text=body,
         content_type="text/calendar; charset=utf-8",
@@ -112,11 +112,16 @@ async def prodamus_webhook(request: web.Request) -> web.Response:
                 studio = await session.get(Studio, booking.studio_id)
                 resource = await session.get(Resource, booking.resource_id)
                 if studio and resource:
+                    from src.keyboards.inline import client_booking_keyboard
                     from src.services.formatters import booking_summary
 
                     text = "✅ Оплата получена.\n" + booking_summary(booking, studio, resource)
                     try:
-                        await bot.send_message(booking.client_telegram_id, text)
+                        await bot.send_message(
+                            booking.client_telegram_id,
+                            text,
+                            reply_markup=client_booking_keyboard(booking.id),
+                        )
                         await bot.send_message(studio.owner_telegram_id, text)
                     except Exception:
                         logger.exception("notify after payment")

@@ -5,10 +5,13 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 from typing import Any
 from urllib.parse import urlencode
 
 from src.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def is_configured() -> bool:
@@ -76,3 +79,33 @@ def build_payment_url(
             continue
         flat[key] = str(value)
     return f"{base}?{urlencode(flat, safe='[]')}"
+
+
+async def request_refund(order_id: str, amount_rub: int) -> tuple[bool, str]:
+    """Возврат в кассе Prodamus. Без ключей — только локальная отмена (тесты/пилот)."""
+    if not order_id:
+        return True, "no_order"
+    if not is_configured():
+        return True, "local"
+    if amount_rub <= 0:
+        return True, "zero"
+    import aiohttp
+
+    payload = {
+        "do": "refund",
+        "order_id": order_id,
+        "sum": str(amount_rub),
+    }
+    payload["signature"] = sign_payload(payload, settings.PRODAMUS_SECRET)
+    url = settings.PRODAMUS_PAYFORM_URL.rstrip("/")
+    try:
+        async with aiohttp.ClientSession() as http:
+            async with http.post(url, data=payload, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                if resp.status >= 400:
+                    body = await resp.text()
+                    logger.warning("prodamus refund http %s: %s", resp.status, body[:300])
+                    return False, f"http_{resp.status}"
+        return True, "ok"
+    except Exception as exc:
+        logger.exception("prodamus refund")
+        return False, str(exc)[:120]

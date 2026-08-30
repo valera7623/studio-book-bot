@@ -38,8 +38,22 @@ def booking_to_vevent(booking: Booking, studio: Studio, resource: Resource) -> s
     )
 
 
-def build_calendar(studio: Studio, resource: Resource, bookings: list[Booking]) -> str:
-    events = "\n".join(booking_to_vevent(b, studio, resource) for b in bookings)
+def build_calendar(
+    studio: Studio,
+    resources: Resource | list[Resource],
+    bookings: list[Booking],
+) -> str:
+    if isinstance(resources, Resource):
+        by_id = {resources.id: resources}
+    else:
+        by_id = {item.id: item for item in resources}
+    fallback = next(iter(by_id.values())) if by_id else None
+    events = []
+    for booking in bookings:
+        resource = by_id.get(booking.resource_id) or fallback
+        if resource is None:
+            continue
+        events.append(booking_to_vevent(booking, studio, resource))
     return "\n".join(
         [
             "BEGIN:VCALENDAR",
@@ -47,7 +61,7 @@ def build_calendar(studio: Studio, resource: Resource, bookings: list[Booking]) 
             "PRODID:-//studio-book//photo studio//RU",
             "CALSCALE:GREGORIAN",
             f"X-WR-CALNAME:{_escape(studio.name)}",
-            events,
+            *events,
             "END:VCALENDAR",
             "",
         ]
