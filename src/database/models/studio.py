@@ -1,7 +1,7 @@
-from datetime import time
+from datetime import datetime, time
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, Time
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Time
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database.base import Base
@@ -33,6 +33,10 @@ class Studio(Base):
     tariff: Mapped[str] = mapped_column(String(16), default=TARIFF_FREE)
     resource_limit: Mapped[int] = mapped_column(Integer, default=1)
     timezone: Mapped[str] = mapped_column(String(64), default="Europe/Moscow")
+    subscription_until: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     owner: Mapped["User"] = relationship(back_populates="studios")
     resources: Mapped[List["Resource"]] = relationship(

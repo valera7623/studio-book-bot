@@ -56,6 +56,10 @@ class Booking(Base):
         nullable=True,
     )
     cancel_reason: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    reminder_sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     resource: Mapped["Resource"] = relationship(back_populates="bookings")
     studio: Mapped["Studio"] = relationship(back_populates="bookings")

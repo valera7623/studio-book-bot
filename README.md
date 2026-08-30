@@ -6,15 +6,14 @@ Telegram-бот почасовой записи для фотостудий (Р�
 
 Вертикаль первых 30 дней: только фотостудии (зал / циклорама / грим).
 
-## Что уже есть (неделя 1, шаг 1)
+## Что есть в MVP
 
-- Каркас aiogram 3.23 + SQLAlchemy async + SQLite (как в справочнике СМП, без медицинского домена).
-- Публичный `/start` без пароля и whitelist.
-- Модели: `User`, `Studio`, `Resource`, `Booking` (hold/paid/cancelled + частичный unique на слот), `Payment`, `Consent`.
-- Документ согласия на ПДн: `data/legal/consent_pdn.md`.
-- Docker, compose, GitHub Actions → VPS, `TELEGRAM_PROXY`, `network_mode: host`.
-
-Ещё нет: FSM записи, предоплата Prodamus, напоминания, iCal, тарифы владельца, лендинг.
+- Публичная запись по `t.me/bot?start=<slug>`: дата → слот → контакты → согласие ПДн → hold.
+- Кабинет владельца `/studio`: ресурс, часы, цена, ссылка и QR, брони, отмена, iCal.
+- Предоплата слота и подписка владельца через Prodamus (чек 54-ФЗ у кассы); webhook идемпотентен.
+- Напоминания и истечение hold — APScheduler. Бэкап SQLite в `data/backups/`.
+- Free / 490 / 990. Лендинг: `landing/index.html` (HTTP `:8088`).
+- Проверка боли: [docs/pain_check.md](docs/pain_check.md) — 8–10 разговоров до рекламы.
 
 ## Доступ
 
@@ -62,8 +61,11 @@ src/config.py               pydantic-settings
 src/bot/loader.py           Dispatcher, FSM (MemoryStorage; Redis опционально)
 src/middlewares/            Database, User, Throttling, Logging
 src/database/               engine, Base, модели
-src/handlers/               /start /help /profile /admin
-src/utils/qr_code.py        deep-link и QR записи
+src/handlers/               /start /studio /help, запись, кабинет
+src/services/               слоты, hold, тарифы, Prodamus, iCal, jobs
+src/web/app.py              лендинг, webhook, подписка .ics
+landing/index.html          лендинг-минимум
+docs/pain_check.md          скрипт разговоров с владельцами
 data/legal/consent_pdn.md   согласие на ПДн
 ```
 

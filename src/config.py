@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     PRODAMUS_SHOP_ID: str = ""
     PRODAMUS_PAYFORM_URL: str = ""
 
+    HTTP_PORT: int = 8088
+    PUBLIC_BASE_URL: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

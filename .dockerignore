@@ -3,7 +3,7 @@ venv/
 .git/
 .github/
 .env
-*.md
+README.md
 *.log
 *.db
 data/*.db
@@ -12,3 +12,4 @@ tests/
 __pycache__/
 *.pyc
 .cursor/
+docs/

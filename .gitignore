@@ -11,6 +11,8 @@ ENV/
 *.log
 *.db
 *.sqlite3
+data/backups/
+
 *.session
 *.session-journal
 

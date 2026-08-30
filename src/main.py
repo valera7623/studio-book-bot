@@ -16,7 +16,9 @@ from src.bot.loader import get_dispatcher, load_routers, setup_middlewares
 from src.config import settings
 from src.database import create_async_engine, get_session_maker
 from src.database.bootstrap import init_database
+from src.services.scheduler import build_scheduler
 from src.utils.logging import setup_logging
+from src.web.app import start_http
 
 
 def _assert_proxy_reachable(proxy_url: str) -> None:
@@ -71,6 +73,10 @@ async def main():
     setup_middlewares(dp, session_maker)
     load_routers(dp)
 
+    web_runner = await start_http(bot, session_maker)
+    scheduler = build_scheduler(bot, session_maker)
+    scheduler.start()
+
     proxy_hint = proxy_url or "(не задан)"
     logging.info("Бот запущен (polling), TELEGRAM_PROXY=%s", proxy_hint)
     try:
@@ -85,6 +91,11 @@ async def main():
             "(ip route | awk '/default/{print $3}'): socks5://<этот_IP>:10808"
         )
         raise SystemExit(1)
+    finally:
+        scheduler.shutdown(wait=False)
+        if web_runner is not None:
+            await web_runner.cleanup()
+        await engine.dispose()
 
 
 if __name__ == "__main__":
