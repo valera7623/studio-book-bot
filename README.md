@@ -14,7 +14,7 @@ Telegram-бот почасовой записи для фотостудий (Р�
 - Напоминания за 24 ч и за 2 ч, истечение hold (20 мин – 24 ч на студии). Бэкап SQLite в `data/backups/`.
 - Студийный час: шаг 30/60, минимум 1/2 ч, буфер уборки, наценка за одиночный час, будни/выходные/ночь.
 - Free / 490 / 990. Публичный лендинг с прайсом: `https://studiobook.com.ru/` (якорь `#prices`). Traefik → бот `:8088`, см. [deploy/traefik-studiobook.yml](deploy/traefik-studiobook.yml).
-- Проверка боли: [docs/pain_check.md](docs/pain_check.md). Аутрич: [docs/outreach.md](docs/outreach.md).
+- Проверка боли: [docs/pain_check.md](docs/pain_check.md). Аутрич: [docs/outreach.md](docs/outreach.md). Касса и пилот: [docs/go_live.md](docs/go_live.md).
 
 ## Доступ
 
@@ -66,6 +66,7 @@ src/handlers/               /start /studio /help /my, запись, кабине
 src/services/               слоты, hold, тарифы, Prodamus, iCal, jobs, отмены
 src/web/app.py              лендинг, webhook, подписка .ics
 landing/index.html          лендинг-минимум
+docs/go_live.md             ключи Prodamus, три платежа, пилот за вечер
 docs/pain_check.md          скрипт разговоров с владельцами
 docs/outreach.md            тексты аутрича и kill 3–5%
 data/legal/consent_pdn.md   согласие на ПДн

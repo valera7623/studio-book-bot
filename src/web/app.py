@@ -44,6 +44,12 @@ async def landing(_request: web.Request) -> web.Response:
     return web.Response(text=_render_landing(LANDING_PATH), content_type="text/html", charset="utf-8")
 
 
+async def robots_txt(_request: web.Request) -> web.Response:
+    path = LANDING_DIR / "robots.txt"
+    text = path.read_text(encoding="utf-8") if path.exists() else "User-agent: *\nAllow: /\n"
+    return web.Response(text=text, content_type="text/plain", charset="utf-8")
+
+
 async def offer_page(_request: web.Request) -> web.Response:
     path = LANDING_DIR / "offer.html"
     if not path.exists():
@@ -170,6 +176,7 @@ def create_web_app(bot, session_maker) -> web.Application:
     app["session_maker"] = session_maker
     app.router.add_get("/health", health)
     app.router.add_get("/", landing)
+    app.router.add_get("/robots.txt", robots_txt)
     app.router.add_get("/offer", offer_page)
     app.router.add_get("/offer/", offer_page)
     app.router.add_get("/offer.pdf", offer_pdf)

@@ -1,5 +1,6 @@
 # Install: copy to /home/valera/traefik/dynamic/studiobook.yml
 # Traefik :80/:443 -> host :8088 via agentops-edge gateway 172.19.0.1
+# www has DNS now — include it so phones that auto-open www. work.
 
 http:
   routers:
@@ -12,8 +13,19 @@ http:
       tls:
         certResolver: letsencrypt
 
+    studiobook-www:
+      rule: "Host(`www.studiobook.com.ru`)"
+      priority: 1
+      entryPoints:
+        - websecure
+      service: studiobook
+      tls:
+        certResolver: letsencrypt
+      middlewares:
+        - studiobook-redirect-apex
+
     studiobook-http:
-      rule: "Host(`studiobook.com.ru`)"
+      rule: "Host(`studiobook.com.ru`) || Host(`www.studiobook.com.ru`)"
       entryPoints:
         - web
       service: studiobook
@@ -31,4 +43,10 @@ http:
       redirectScheme:
         scheme: https
         port: "443"
+        permanent: true
+
+    studiobook-redirect-apex:
+      redirectRegex:
+        regex: "^https://www\\.studiobook\\.com\\.ru/(.*)"
+        replacement: "https://studiobook.com.ru/${1}"
         permanent: true

@@ -75,6 +75,10 @@ async def test_landing_http_substitutes_tariffs(engine):
         assert "990" in text
         assert "2\xa0000" in text or "2&nbsp;000" in text
         assert "Стоимость услуг" in text
+        assert "220910861433" in text
+        assert "https://studiobook.com.ru/" in text
+        robots = await client.get("/robots.txt")
+        assert robots.status == 200
         offer = await client.get("/offer")
         assert offer.status == 200
         offer_text = await offer.text()
@@ -84,3 +88,27 @@ async def test_landing_http_substitutes_tariffs(engine):
         pdf = await client.get("/offer.pdf")
         assert pdf.status == 200
         assert "pdf" in (pdf.headers.get("Content-Type") or "").lower()
+
+
+async def test_admin_support_text_shows_payform_and_counts(session):
+    from src.handlers.admin_commands import platform_support_text
+
+    text = await platform_support_text(session)
+    assert "Касса Prodamus" in text
+    assert "Webhook:" in text
+    assert "Платежи:" in text
+    assert "Брони:" in text
+
+
+def test_go_live_runbook_has_webhook():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    go_live = (root / "docs" / "go_live.md").read_text(encoding="utf-8")
+    assert "https://studiobook.com.ru/prodamus/webhook" in go_live
+    owner = (root / "src" / "handlers" / "owner.py").read_text(encoding="utf-8")
+    assert "Пилот за вечер" in owner
+    outreach = (root / "docs" / "outreach.md").read_text(encoding="utf-8")
+    assert "3–5%" in outreach or "3-5%" in outreach
+    pain = (root / "docs" / "pain_check.md").read_text(encoding="utf-8")
+    assert "первая оплата слота" in pain

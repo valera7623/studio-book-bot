@@ -101,7 +101,9 @@ async def show_cabinet(message: Message, session: AsyncSession, user: User) -> N
         f"Отмена бесплатно за {studio.cancel_free_hours} ч "
         f"(удержание {studio.late_cancel_retain_percent}%)\n\n"
         f"{halls}\n\n"
-        "Клиенты записываются по ссылке. Это не CRM."
+        "Клиенты записываются по ссылке. Это не CRM.\n"
+        "Пилот за вечер: Ссылка → Тексты клиенту → клиент платит слот → "
+        "напоминание → отмена в /my."
     )
     await message.answer(text, reply_markup=owner_cabinet_keyboard())
 
