@@ -239,6 +239,47 @@ async def test_prodamus_signature_roundtrip():
     assert not verify_signature(data, "deadbeef", secret)
 
 
+def test_prodamus_php_form_nests_products():
+    from src.services.prodamus import extract_order_fields, parse_php_form, webhook_signature_ok
+
+    body = (
+        "order_id=slot-2-2&payment_status=success"
+        "&products[0][name]=Hall&products[0][price]=50&products[0][quantity]=1"
+        "&submit[order_id]=slot-2-2&submit[payment_status]=success"
+    )
+    parsed = parse_php_form(body)
+    assert parsed["order_id"] == "slot-2-2"
+    assert parsed["products"][0]["name"] == "Hall"
+    assert parsed["products"][0]["price"] == "50"
+    order_id, status = extract_order_fields(parsed)
+    assert order_id == "slot-2-2"
+    assert status == "success"
+    nested = {"order_id": "slot-2-2", "payment_status": "success", "sum": "50.00"}
+    sig = sign_payload(nested, "s3cret")
+    assert webhook_signature_ok({"submit": nested, "order_id": "slot-2-2"}, sig, "s3cret")
+
+
+def test_payment_url_has_no_query_signature(monkeypatch):
+    from src.services import prodamus as prodamus_mod
+
+    monkeypatch.setattr(prodamus_mod.settings, "PRODAMUS_PAYFORM_URL", "https://demo.payform.ru")
+    monkeypatch.setattr(prodamus_mod.settings, "PUBLIC_BASE_URL", "https://studiobook.com.ru")
+    url = prodamus_mod.build_payment_url(
+        order_id="slot-1-2",
+        amount_rub=100,
+        description="Зал / 1 час",
+        customer_phone="+79991234567",
+        extra={"kind": "slot_prepay", "payment_id": "2"},
+    )
+    assert url.startswith("https://demo.payform.ru?")
+    assert "signature=" not in url
+    assert "urlNotification=" not in url
+    assert "do=pay" in url
+    assert "products[0][price]=100" in url
+    assert "customer_phone=79991234567" in url
+    assert "urlSuccess=" in url
+
+
 def test_slugify_russian():
     assert slugify("Циклорама Свет") == "ciklorama-svet"
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from urllib.parse import urlencode
 
 from aiohttp import web
 from sqlalchemy import select
@@ -100,11 +101,18 @@ async def ical_feed(request: web.Request) -> web.Response:
 
 
 async def prodamus_webhook(request: web.Request) -> web.Response:
-    if request.content_type and "json" in request.content_type:
-        payload = await request.json()
+    content_type = (request.content_type or "").lower()
+    payload: dict = {}
+    if "json" in content_type:
+        loaded = await request.json()
+        payload = loaded if isinstance(loaded, dict) else {}
     else:
         post = await request.post()
-        payload = _form_to_dict(dict(post))
+        encoded = urlencode(
+            [(str(k), v.decode("utf-8", "replace") if isinstance(v, (bytes, bytearray)) else str(v))
+             for k, v in post.items()]
+        )
+        payload = prodamus.parse_php_form(encoded)
     if not isinstance(payload, dict):
         raise web.HTTPBadRequest()
 
@@ -113,15 +121,17 @@ async def prodamus_webhook(request: web.Request) -> web.Response:
         or request.headers.get("X-Signature")
         or str(payload.get("signature") or payload.get("sign") or "")
     )
-    check = {k: v for k, v in payload.items() if k not in {"signature", "sign"}}
-    if prodamus.is_configured() and not prodamus.verify_signature(
-        check, signature, settings.PRODAMUS_SECRET
+    if prodamus.is_configured() and not prodamus.webhook_signature_ok(
+        payload, signature, settings.PRODAMUS_SECRET
     ):
-        logger.warning("prodamus webhook: bad signature")
+        logger.warning(
+            "prodamus webhook: bad signature keys=%s has_sign=%s",
+            sorted(str(k) for k in payload.keys()),
+            bool(signature),
+        )
         raise web.HTTPForbidden()
 
-    order_id = str(payload.get("order_id") or payload.get("orderId") or "")
-    status = str(payload.get("payment_status") or payload.get("status") or "").lower()
+    order_id, status = prodamus.extract_order_fields(payload)
     if not order_id:
         raise web.HTTPBadRequest(text="order_id required")
     if status and status not in {"success", "paid", "ok", "1"}:

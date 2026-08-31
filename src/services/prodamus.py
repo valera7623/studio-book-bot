@@ -6,12 +6,16 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode
 
 from src.config import settings
 
 logger = logging.getLogger(__name__)
+
+_PHP_KEY = re.compile(r"^([^[]+)((?:\[[^\]]*\])*)$")
+_PHP_IDX = re.compile(r"\[([^\]]*)\]")
 
 
 def is_configured() -> bool:
@@ -20,9 +24,57 @@ def is_configured() -> bool:
     )
 
 
+def parse_php_form(body: str) -> dict[str, Any]:
+    """application/x-www-form-urlencoded → вложенный dict как PHP $_POST."""
+    root: dict[str, Any] = {}
+    for key, value in parse_qsl(body, keep_blank_values=True):
+        _php_assign(root, _php_path(key), value)
+    return root
+
+
+def _php_path(key: str) -> list[str]:
+    matched = _PHP_KEY.match(key)
+    if not matched:
+        return [key]
+    parts = [matched.group(1)]
+    parts.extend(_PHP_IDX.findall(matched.group(2) or ""))
+    return [p for p in parts if p != ""]
+
+
+def _php_assign(root: dict[str, Any], path: list[str], value: str) -> None:
+    cur: Any = root
+    for i, key in enumerate(path):
+        last = i == len(path) - 1
+        nxt_idx = (i + 1 < len(path)) and path[i + 1].isdigit()
+        if last:
+            if isinstance(cur, list):
+                idx = int(key)
+                while len(cur) <= idx:
+                    cur.append("")
+                cur[idx] = value
+            else:
+                cur[key] = value
+            return
+        if isinstance(cur, list):
+            idx = int(key)
+            while len(cur) <= idx:
+                cur.append([] if nxt_idx else {})
+            if not isinstance(cur[idx], (dict, list)):
+                cur[idx] = [] if nxt_idx else {}
+            cur = cur[idx]
+            continue
+        if key not in cur or not isinstance(cur[key], (dict, list)):
+            cur[key] = [] if nxt_idx else {}
+        cur = cur[key]
+
+
 def _normalize(value: Any) -> Any:
     if isinstance(value, dict):
-        return {str(k): _normalize(value[k]) for k in sorted(value, key=str)}
+        if value and all(str(k).isdigit() for k in value):
+            indexes = sorted(int(k) for k in value)
+            if indexes == list(range(len(value))):
+                return [_normalize(value[str(i)] if str(i) in value else value[i]) for i in indexes]
+        return {str(k): _normalize(value[k]) for k, v in sorted(value.items(), key=lambda kv: str(kv[0]))}
     if isinstance(value, list):
         return [_normalize(item) for item in value]
     if value is None:
@@ -30,14 +82,75 @@ def _normalize(value: Any) -> Any:
     return str(value)
 
 
+def _canonical_json(data: Any) -> list[str]:
+    norm = _normalize(data)
+    plain = json.dumps(norm, ensure_ascii=False, separators=(",", ":"))
+    return [
+        plain,
+        plain.replace("/", "\\/"),
+        json.dumps(norm, ensure_ascii=True, separators=(",", ":")),
+    ]
+
+
 def sign_payload(data: dict[str, Any], secret: str) -> str:
-    payload = json.dumps(_normalize(data), ensure_ascii=False, separators=(",", ":"))
+    payload = _canonical_json(data)[0]
     return hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def verify_signature(data: dict[str, Any], signature: str, secret: str) -> bool:
-    expected = sign_payload(data, secret)
-    return hmac.compare_digest(expected.lower(), (signature or "").strip().lower())
+    got = (signature or "").strip().lower()
+    if not got:
+        return False
+    for raw in _canonical_json(data):
+        digest = hmac.new(secret.encode("utf-8"), raw.encode("utf-8"), hashlib.sha256).hexdigest()
+        if hmac.compare_digest(digest.lower(), got):
+            return True
+    return False
+
+
+def _as_dict(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.startswith("{"):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
+
+
+def webhook_payloads_to_verify(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    skip = {"signature", "sign"}
+    base = {k: v for k, v in payload.items() if k not in skip}
+    bodies = [base]
+    submit = _as_dict(payload.get("submit"))
+    if submit:
+        bodies.insert(0, {k: v for k, v in submit.items() if k not in skip})
+    return bodies
+
+
+def webhook_signature_ok(payload: dict[str, Any], signature: str, secret: str) -> bool:
+    return any(verify_signature(body, signature, secret) for body in webhook_payloads_to_verify(payload))
+
+
+def extract_order_fields(payload: dict[str, Any]) -> tuple[str, str]:
+    submit = _as_dict(payload.get("submit")) or {}
+    order_id = (
+        payload.get("order_id")
+        or payload.get("orderId")
+        or submit.get("order_id")
+        or submit.get("orderId")
+        or ""
+    )
+    status = str(
+        payload.get("payment_status")
+        or submit.get("payment_status")
+        or payload.get("status")
+        or submit.get("status")
+        or ""
+    ).lower()
+    return str(order_id), status
 
 
 def build_payment_url(
@@ -48,36 +161,30 @@ def build_payment_url(
     customer_phone: str | None = None,
     extra: dict[str, str] | None = None,
 ) -> str:
+    """GET на payform. Подпись в query не ставить: неверный HMAC даёт HTTP 400 (RFC9110)."""
     base = settings.PRODAMUS_PAYFORM_URL.rstrip("/")
-    params: dict[str, Any] = {
+    name = " ".join((description or "Услуга").split())[:120]
+    extra_note = ""
+    if extra:
+        extra_note = " ".join(f"{k}={v}" for k, v in extra.items())[:180]
+    flat: dict[str, str] = {
         "do": "pay",
         "order_id": order_id,
-        "products": {
-            "0": {
-                "name": description,
-                "price": str(amount_rub),
-                "quantity": "1",
-            }
-        },
-        "customer_extra": json.dumps(extra or {}, ensure_ascii=False),
+        "products[0][name]": name,
+        "products[0][price]": str(amount_rub),
+        "products[0][quantity]": "1",
+        "products[0][type]": "service",
+        "customer_extra": extra_note or name,
     }
-    if customer_phone:
-        params["customer_phone"] = customer_phone
+    digits = "".join(ch for ch in (customer_phone or "") if ch.isdigit())
+    if digits.startswith("8") and len(digits) == 11:
+        digits = "7" + digits[1:]
+    if len(digits) == 11 and digits.startswith("7"):
+        flat["customer_phone"] = digits
     if settings.PUBLIC_BASE_URL.strip():
-        params["urlSuccess"] = settings.PUBLIC_BASE_URL.rstrip("/") + "/pay/success"
-        params["urlReturn"] = settings.PUBLIC_BASE_URL.rstrip("/") + "/pay/return"
-        params["urlNotification"] = settings.PUBLIC_BASE_URL.rstrip("/") + "/prodamus/webhook"
-    params["signature"] = sign_payload(params, settings.PRODAMUS_SECRET)
-    flat: dict[str, str] = {}
-    for key, value in params.items():
-        if key == "products":
-            flat["products[0][name]"] = description
-            flat["products[0][price]"] = str(amount_rub)
-            flat["products[0][quantity]"] = "1"
-            continue
-        if isinstance(value, dict):
-            continue
-        flat[key] = str(value)
+        root = settings.PUBLIC_BASE_URL.rstrip("/")
+        flat["urlSuccess"] = root + "/pay/success"
+        flat["urlReturn"] = root + "/pay/return"
     return f"{base}?{urlencode(flat, safe='[]')}"
 
 
