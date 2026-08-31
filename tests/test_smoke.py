@@ -107,8 +107,22 @@ def test_go_live_runbook_has_webhook():
     go_live = (root / "docs" / "go_live.md").read_text(encoding="utf-8")
     assert "https://studiobook.com.ru/prodamus/webhook" in go_live
     owner = (root / "src" / "handlers" / "owner.py").read_text(encoding="utf-8")
-    assert "Пилот за вечер" in owner
+    assert "ow:guide" in owner
     outreach = (root / "docs" / "outreach.md").read_text(encoding="utf-8")
     assert "3–5%" in outreach or "3-5%" in outreach
     pain = (root / "docs" / "pain_check.md").read_text(encoding="utf-8")
     assert "первая оплата слота" in pain
+
+
+def test_owner_cheat_sheet_covers_buttons():
+    from src.keyboards.inline import owner_cabinet_keyboard
+    from src.services.outreach import owner_cheat_sheet
+
+    text = owner_cheat_sheet()
+    assert "Ссылка записи" in text
+    assert "Брони" in text
+    assert "Закрыть интервал" in text
+    assert len(text) < 3500
+    markup = owner_cabinet_keyboard()
+    datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "ow:guide" in datas

@@ -28,7 +28,7 @@ from src.services import prodamus
 from src.services.cancellations import cancel_booking, cancel_rules_text
 from src.services.formatters import format_interval_local, format_slot_local
 from src.services.ical import build_calendar
-from src.services.outreach import owner_copy_pack
+from src.services.outreach import owner_cheat_sheet, owner_copy_pack
 from src.services.slots import create_block, parse_block_interval, parse_hours
 from src.services.studios import (
     get_owner_studio,
@@ -102,8 +102,7 @@ async def show_cabinet(message: Message, session: AsyncSession, user: User) -> N
         f"(удержание {studio.late_cancel_retain_percent}%)\n\n"
         f"{halls}\n\n"
         "Клиенты записываются по ссылке. Это не CRM.\n"
-        "Пилот за вечер: Ссылка → Тексты клиенту → клиент платит слот → "
-        "напоминание → отмена в /my."
+        "Непонятно, что нажать — кнопка «Шпаргалка»."
     )
     await message.answer(text, reply_markup=owner_cabinet_keyboard())
 
@@ -259,6 +258,18 @@ async def cb_texts(callback: CallbackQuery, session: AsyncSession, user: User, b
         await callback.answer("Нет студии", show_alert=True)
         return
     await _send_outreach(callback.message, bot, studio)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "ow:guide")
+async def cb_owner_guide(callback: CallbackQuery, session: AsyncSession, user: User):
+    if not await get_owner_studio(session, user):
+        await callback.answer("Нет студии", show_alert=True)
+        return
+    await callback.message.answer(
+        owner_cheat_sheet(),
+        reply_markup=owner_cabinet_keyboard(),
+    )
     await callback.answer()
 
 

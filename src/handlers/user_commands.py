@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import settings
 from src.handlers.booking import start_public_booking
 from src.keyboards.inline import welcome_keyboard
+from src.services.outreach import owner_cheat_sheet
 from src.services.studios import get_owner_studio
 from src.utils.text_formatter import format_welcome_message
 
@@ -49,8 +50,7 @@ async def cmd_help(message: Message, user):
         "/rules — шаблон правил отмены",
         "/profile — профиль Telegram",
         "",
-        "Клиент студии открывает ссылку записи — пароль не нужен.",
-        "Владелец управляет студией в этом же боте.",
+        owner_cheat_sheet(),
     ]
     if user.telegram_id in settings.admin_ids:
         parts.append("")

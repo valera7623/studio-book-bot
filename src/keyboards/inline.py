@@ -27,6 +27,7 @@ def welcome_keyboard(*, has_studio: bool) -> InlineKeyboardMarkup:
 
 def owner_cabinet_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    builder.button(text="❓ Шпаргалка", callback_data="ow:guide")
     builder.button(text="📋 Брони", callback_data="ow:book")
     builder.button(text="🔗 Ссылка записи", callback_data="ow:link")
     builder.button(text="📣 Тексты", callback_data="ow:txt")
@@ -39,7 +40,7 @@ def owner_cabinet_keyboard() -> InlineKeyboardMarkup:
     builder.button(text="➕ Зал", callback_data="ow:res")
     builder.button(text="💳 Тариф", callback_data="ow:tariff")
     builder.button(text="📅 iCal", callback_data="ow:ical")
-    builder.adjust(2)
+    builder.adjust(1, 2)
     return builder.as_markup()
 
 
