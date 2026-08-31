@@ -13,7 +13,7 @@ from src.config import PROJECT_ROOT, settings
 from src.database.models.booking import STATUS_BLOCKED, STATUS_PAID, Booking
 from src.services import prodamus
 from src.services.ical import build_calendar
-from src.services.payments import apply_paid_order
+from src.services.payments import apply_paid_order, find_payment_for_webhook
 from src.services.studios import get_studio_by_slug, list_active_resources
 
 logger = logging.getLogger(__name__)
@@ -132,18 +132,26 @@ async def prodamus_webhook(request: web.Request) -> web.Response:
         raise web.HTTPForbidden()
 
     order_id, status = prodamus.extract_order_fields(payload)
-    if not order_id:
-        raise web.HTTPBadRequest(text="order_id required")
     if status and status not in {"success", "paid", "ok", "1"}:
         return web.Response(text="ignored")
 
     session_maker = request.app["session_maker"]
     bot = request.app["bot"]
     async with session_maker() as session:
-        payment = await apply_paid_order(session, order_id)
+        found = await find_payment_for_webhook(session, payload)
+        invoice = (
+            (found.prodamus_invoice_id or f"pay-{found.id}") if found is not None else order_id
+        )
+        payment = await apply_paid_order(session, invoice) if invoice else None
         if payment is None:
-            logger.info("prodamus webhook: unknown order %s", order_id)
-            return web.Response(text="unknown")
+            logger.info(
+                "prodamus webhook: unknown order extracted=%s ids=%s extra=%s keys=%s",
+                order_id,
+                prodamus.collect_order_ids(payload),
+                str(payload.get("customer_extra") or "")[:120],
+                sorted(str(k) for k in payload.keys()),
+            )
+            return web.Response(text="unknown", status=404)
         if payment.kind == "slot_prepay" and payment.booking_id:
             from src.database.models.studio import Resource, Studio
 

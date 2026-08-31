@@ -259,6 +259,22 @@ def test_prodamus_php_form_nests_products():
     assert webhook_signature_ok({"submit": nested, "order_id": "slot-2-2"}, sig, "s3cret")
 
 
+def test_collect_order_ids_prefers_slot_sku():
+    from src.services.prodamus import collect_order_ids, extract_order_fields
+
+    payload = {
+        "order_id": "01a057b2-5ac2-7a22-8ff5-dc8815433382",
+        "payment_status": "success",
+        "products": [{"sku": "slot-3-3", "name": "Hall", "price": "50"}],
+        "customer_extra": "kind=slot_prepay payment_id=3 order_id=slot-3-3",
+    }
+    ids = collect_order_ids(payload)
+    assert "slot-3-3" in ids
+    order_id, status = extract_order_fields(payload)
+    assert order_id == "slot-3-3"
+    assert status == "success"
+
+
 def test_payment_url_has_no_query_signature(monkeypatch):
     from src.services import prodamus as prodamus_mod
 
@@ -278,6 +294,8 @@ def test_payment_url_has_no_query_signature(monkeypatch):
     assert "products[0][price]=100" in url
     assert "customer_phone=79991234567" in url
     assert "urlSuccess=" in url
+    assert "products[0][sku]=slot-1-2" in url
+    assert "order_id=slot-1-2" in url
 
 
 def test_slugify_russian():

@@ -136,13 +136,9 @@ def webhook_signature_ok(payload: dict[str, Any], signature: str, secret: str) -
 
 def extract_order_fields(payload: dict[str, Any]) -> tuple[str, str]:
     submit = _as_dict(payload.get("submit")) or {}
-    order_id = (
-        payload.get("order_id")
-        or payload.get("orderId")
-        or submit.get("order_id")
-        or submit.get("orderId")
-        or ""
-    )
+    candidates = collect_order_ids(payload)
+    ours = [i for i in candidates if i.startswith("slot-") or i.startswith("sub-")]
+    order_id = (ours[0] if ours else (candidates[0] if candidates else ""))
     status = str(
         payload.get("payment_status")
         or submit.get("payment_status")
@@ -151,6 +147,46 @@ def extract_order_fields(payload: dict[str, Any]) -> tuple[str, str]:
         or ""
     ).lower()
     return str(order_id), status
+
+
+def collect_order_ids(payload: dict[str, Any]) -> list[str]:
+    found: list[str] = []
+
+    def add(value: Any) -> None:
+        text = str(value or "").strip()
+        if text and text not in found:
+            found.append(text)
+
+    sources = [payload]
+    submit = _as_dict(payload.get("submit"))
+    if submit:
+        sources.append(submit)
+    for src in sources:
+        for key in ("order_id", "orderId", "order_num", "orderNum"):
+            add(src.get(key))
+        products = src.get("products")
+        if isinstance(products, list):
+            for item in products:
+                if isinstance(item, dict):
+                    add(item.get("sku"))
+        extra = str(src.get("customer_extra") or "")
+        match = re.search(r"(slot-\d+-\d+|sub-\d+-[a-z]+-\d+)", extra)
+        if match:
+            add(match.group(1))
+    return found
+
+
+def payment_id_from_payload(payload: dict[str, Any]) -> int | None:
+    sources = [payload]
+    submit = _as_dict(payload.get("submit"))
+    if submit:
+        sources.append(submit)
+    for src in sources:
+        extra = str(src.get("customer_extra") or "")
+        match = re.search(r"payment_id=(\d+)", extra)
+        if match:
+            return int(match.group(1))
+    return None
 
 
 def build_payment_url(
@@ -167,12 +203,14 @@ def build_payment_url(
     extra_note = ""
     if extra:
         extra_note = " ".join(f"{k}={v}" for k, v in extra.items())[:180]
+    extra_note = f"{extra_note} order_id={order_id}".strip()
     flat: dict[str, str] = {
         "do": "pay",
         "order_id": order_id,
         "products[0][name]": name,
         "products[0][price]": str(amount_rub),
         "products[0][quantity]": "1",
+        "products[0][sku]": order_id,
         "products[0][type]": "service",
         "customer_extra": extra_note or name,
     }

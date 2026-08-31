@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import logging
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,8 @@ from src.database.models.payment import (
 from src.database.models.studio import TARIFF_PLUS, TARIFF_STARTER, Studio
 from src.services import prodamus
 from src.services.tariffs import resource_limit_for
+
+logger = logging.getLogger(__name__)
 
 
 def _as_utc(dt: datetime | None) -> datetime | None:
@@ -77,6 +80,41 @@ def payment_url(payment: Payment, *, phone: str | None = None, description: str)
         customer_phone=phone,
         extra={"kind": payment.kind, "payment_id": str(payment.id)},
     )
+
+
+async def find_payment_for_webhook(session: AsyncSession, payload: dict) -> Payment | None:
+    """Prodamus часто кладёт свой UUID в order_id; наш номер — slot-/sub- или sku."""
+    from src.services.prodamus import collect_order_ids, payment_id_from_payload
+
+    for order_id in collect_order_ids(payload):
+        stmt = select(Payment).where(Payment.prodamus_invoice_id == order_id)
+        payment = (await session.execute(stmt)).scalar_one_or_none()
+        if payment is not None:
+            return payment
+    payment_id = payment_id_from_payload(payload)
+    if payment_id:
+        payment = await session.get(Payment, payment_id)
+        if payment is not None:
+            return payment
+    pending = (
+        await session.execute(
+            select(Payment).where(
+                Payment.status == PAYMENT_PENDING,
+                Payment.kind == KIND_SLOT_PREPAY,
+            )
+        )
+    ).scalars().all()
+    holds: list[Payment] = []
+    for item in pending:
+        if not item.booking_id:
+            continue
+        booking = await session.get(Booking, item.booking_id)
+        if booking is not None and booking.status == STATUS_HOLD:
+            holds.append(item)
+    if len(holds) == 1:
+        logger.info("prodamus webhook: unique hold payment %s", holds[0].id)
+        return holds[0]
+    return None
 
 
 async def apply_paid_order(session: AsyncSession, order_id: str) -> Payment | None:
