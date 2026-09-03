@@ -5,6 +5,8 @@ aiohttp-socks==0.9.0
 
 # Конфигурация
 python-dotenv==1.0.1
+pydantic==2.12.5
+pydantic-core==2.41.5
 pydantic-settings==2.8.0
 
 # БД (SQLite async; Postgres — позже, self-host на VPS РФ)
