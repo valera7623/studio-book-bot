@@ -26,11 +26,23 @@ def _form_to_dict(data: dict) -> dict:
     return {str(k): (v[0] if isinstance(v, list) and v else v) for k, v in data.items()}
 
 
-def _render_landing(path: Path) -> str:
+DEFAULT_BOT_USERNAME = "Studio_book_bot"
+
+
+def _landing_username(request: web.Request | None = None) -> str:
+    if request is not None:
+        cached = str(request.app.get("bot_username") or "").strip().lstrip("@")
+        if cached:
+            return cached
+    configured = settings.BOT_USERNAME.strip().lstrip("@")
+    return configured or DEFAULT_BOT_USERNAME
+
+
+def _render_landing(path: Path, bot_username: str | None = None) -> str:
     html = path.read_text(encoding="utf-8") if path.exists() else "<p>studio-book</p>"
-    bot_username = settings.BOT_USERNAME.strip() or "your_bot"
-    html = html.replace("{{BOT_USERNAME}}", bot_username)
-    html = html.replace("{{BOT_LINK}}", f"https://t.me/{bot_username}")
+    username = (bot_username or DEFAULT_BOT_USERNAME).strip().lstrip("@") or DEFAULT_BOT_USERNAME
+    html = html.replace("{{BOT_USERNAME}}", username)
+    html = html.replace("{{BOT_LINK}}", f"https://t.me/{username}")
     html = html.replace("{{TARIFF_STARTER_RUB}}", str(settings.TARIFF_STARTER_RUB))
     html = html.replace("{{TARIFF_PLUS_RUB}}", str(settings.TARIFF_PLUS_RUB))
     html = html.replace("{{FREE_BOOKINGS_PER_MONTH}}", str(settings.FREE_BOOKINGS_PER_MONTH))
@@ -41,8 +53,12 @@ async def health(_request: web.Request) -> web.Response:
     return web.Response(text="ok")
 
 
-async def landing(_request: web.Request) -> web.Response:
-    return web.Response(text=_render_landing(LANDING_PATH), content_type="text/html", charset="utf-8")
+async def landing(request: web.Request) -> web.Response:
+    return web.Response(
+        text=_render_landing(LANDING_PATH, _landing_username(request)),
+        content_type="text/html",
+        charset="utf-8",
+    )
 
 
 async def robots_txt(_request: web.Request) -> web.Response:
@@ -51,11 +67,15 @@ async def robots_txt(_request: web.Request) -> web.Response:
     return web.Response(text=text, content_type="text/plain", charset="utf-8")
 
 
-async def offer_page(_request: web.Request) -> web.Response:
+async def offer_page(request: web.Request) -> web.Response:
     path = LANDING_DIR / "offer.html"
     if not path.exists():
         raise web.HTTPNotFound()
-    return web.Response(text=_render_landing(path), content_type="text/html", charset="utf-8")
+    return web.Response(
+        text=_render_landing(path, _landing_username(request)),
+        content_type="text/html",
+        charset="utf-8",
+    )
 
 
 async def offer_pdf(_request: web.Request) -> web.StreamResponse:
@@ -210,6 +230,15 @@ async def start_http(bot, session_maker) -> web.AppRunner | None:
         logger.info("HTTP_PORT=0 — веб (лендинг/webhook/iCal) выключен")
         return None
     app = create_web_app(bot, session_maker)
+    if bot is not None:
+        from src.utils.qr_code import resolve_bot_username
+
+        try:
+            username = await resolve_bot_username(bot, settings.BOT_USERNAME)
+            app["bot_username"] = username
+            logger.info("Лендинг и QR: https://t.me/%s", username)
+        except Exception:
+            logger.exception("Не удалось получить username бота для лендинга")
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", settings.HTTP_PORT)

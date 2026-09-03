@@ -77,6 +77,12 @@ async def main():
     scheduler = build_scheduler(bot, session_maker)
     scheduler.start()
 
+    try:
+        me = await bot.get_me()
+        logging.info("Polling @%s (id=%s)", me.username or "?", me.id)
+    except Exception:
+        logging.exception("getMe при старте не удался")
+
     proxy_hint = proxy_url or "(не задан)"
     logging.info("Бот запущен (polling), TELEGRAM_PROXY=%s", proxy_hint)
     try:

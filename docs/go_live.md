@@ -43,7 +43,14 @@ cd /home/valera/studio-book && docker compose -f docker-compose.prod.yml up -d
 
 Если на каждую студию нужен саппорт — чинить тексты в `/studio`, не модули.
 
-`@Saas_concept_bot` менять в BotFather **после** первого живого платежа, затем `BOT_USERNAME` в `.env` и пересоздать контейнер (ссылки/QR подтянутся).
+Живой бот: **`@Studio_book_bot`**. Username берётся из токена (`getMe`); в `.env` на VPS:
+
+```
+BOT_TOKEN=...          # токен @Studio_book_bot из BotFather
+BOT_USERNAME=Studio_book_bot
+```
+
+После смены токена пересоздать контейнер. В `/studio` заново открыть «Ссылка» — QR и `t.me/Studio_book_bot?start=<slug>` обновятся. Старый `@Saas_concept_bot` не поллится: старые диплинки на него не работают.
 
 ## 3. Дальше не код
 

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import io
+import logging
 import re
 from typing import Optional
 
 import qrcode
 from qrcode.constants import ERROR_CORRECT_M
+
+logger = logging.getLogger(__name__)
 
 _START_PAYLOAD_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
@@ -46,11 +49,23 @@ def generate_booking_qr(bot_username: str, payload: str) -> tuple[str, bytes]:
 
 
 async def resolve_bot_username(bot, configured_username: Optional[str] = None) -> str:
-    if configured_username and configured_username.strip():
-        return configured_username.lstrip("@").strip()
-    me = await bot.get_me()
-    if not me.username:
-        raise RuntimeError(
-            "У бота нет username. Задайте в @BotFather или BOT_USERNAME в .env"
-        )
-    return me.username
+    """Username живого токена (getMe). Env — запасной, если API недоступен."""
+    fallback = (configured_username or "").lstrip("@").strip()
+    try:
+        me = await bot.get_me()
+        if me.username:
+            live = me.username.lstrip("@").strip()
+            if fallback and live.lower() != fallback.lower():
+                logger.warning(
+                    "BOT_USERNAME=%s не совпадает с getMe @%s — берём живой username",
+                    fallback,
+                    live,
+                )
+            return live
+    except Exception:
+        logger.exception("getMe не вернул username")
+    if fallback:
+        return fallback
+    raise RuntimeError(
+        "У бота нет username. Задайте его в @BotFather или BOT_USERNAME в .env"
+    )

@@ -77,6 +77,11 @@ async def test_landing_http_substitutes_tariffs(engine):
         assert "Стоимость услуг" in text
         assert "220910861433" in text
         assert "https://studiobook.com.ru/" in text
+        from src.config import settings
+        from src.web.app import DEFAULT_BOT_USERNAME
+
+        expected_bot = (settings.BOT_USERNAME or DEFAULT_BOT_USERNAME).strip().lstrip("@")
+        assert f"t.me/{expected_bot}" in text
         robots = await client.get("/robots.txt")
         assert robots.status == 200
         offer = await client.get("/offer")
@@ -112,6 +117,16 @@ def test_go_live_runbook_has_webhook():
     assert "3–5%" in outreach or "3-5%" in outreach
     pain = (root / "docs" / "pain_check.md").read_text(encoding="utf-8")
     assert "первая оплата слота" in pain
+
+
+def test_landing_render_uses_studio_book_username(tmp_path):
+    from src.web.app import _render_landing
+
+    page = tmp_path / "x.html"
+    page.write_text('<a href="{{BOT_LINK}}">t.me/{{BOT_USERNAME}}</a>', encoding="utf-8")
+    html = _render_landing(page, "Studio_book_bot")
+    assert "t.me/Studio_book_bot" in html
+    assert "Saas_concept_bot" not in html
 
 
 def test_owner_cheat_sheet_covers_buttons():
