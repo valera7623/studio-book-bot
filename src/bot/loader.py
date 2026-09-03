@@ -36,10 +36,10 @@ def load_routers(dp: Dispatcher):
     from src.handlers import admin_commands, booking, owner, profile, user_commands
 
     for router in (
+        user_commands.router,
         admin_commands.router,
+        profile.router,
         owner.router,
         booking.router,
-        user_commands.router,
-        profile.router,
     ):
         dp.include_router(router)

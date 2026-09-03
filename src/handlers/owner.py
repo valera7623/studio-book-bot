@@ -41,6 +41,7 @@ from src.states.booking import OwnerStates
 from src.utils.qr_code import generate_booking_qr, resolve_bot_username
 
 router = Router()
+_NOT_COMMAND = F.text & ~F.text.startswith("/")
 
 
 def _copy_slot_fields(primary: Resource | None) -> dict:
@@ -136,7 +137,7 @@ async def cb_cabinet(callback: CallbackQuery, session: AsyncSession, user: User,
     await callback.answer()
 
 
-@router.message(OwnerStates.waiting_studio_name)
+@router.message(OwnerStates.waiting_studio_name, _NOT_COMMAND)
 async def owner_studio_name(message: Message, state: FSMContext):
     name = (message.text or "").strip()
     if len(name) < 2:
@@ -147,7 +148,7 @@ async def owner_studio_name(message: Message, state: FSMContext):
     await message.answer("Название зала / ресурса? Например: Циклорама. Или «Зал».")
 
 
-@router.message(OwnerStates.waiting_resource_name)
+@router.message(OwnerStates.waiting_resource_name, _NOT_COMMAND)
 async def owner_resource_name(message: Message, state: FSMContext):
     name = (message.text or "").strip() or "Зал"
     await state.update_data(resource_name=name)
@@ -155,7 +156,7 @@ async def owner_resource_name(message: Message, state: FSMContext):
     await message.answer("Часы работы в будни, например: 10:00 22:00")
 
 
-@router.message(OwnerStates.waiting_hours)
+@router.message(OwnerStates.waiting_hours, _NOT_COMMAND)
 async def owner_hours(message: Message, state: FSMContext):
     parsed = parse_hours(message.text or "")
     if parsed is None:
@@ -167,7 +168,7 @@ async def owner_hours(message: Message, state: FSMContext):
     await message.answer("Цена часа в рублях (число). 0 — пока без предоплаты.")
 
 
-@router.message(OwnerStates.waiting_price)
+@router.message(OwnerStates.waiting_price, _NOT_COMMAND)
 async def owner_price(
     message: Message,
     session: AsyncSession,
@@ -280,7 +281,7 @@ async def cb_hours(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@router.message(OwnerStates.waiting_hours_edit)
+@router.message(OwnerStates.waiting_hours_edit, _NOT_COMMAND)
 async def owner_hours_edit(message: Message, session: AsyncSession, user: User, state: FSMContext):
     parsed = parse_hours(message.text or "")
     if parsed is None:
@@ -314,7 +315,7 @@ async def _set_all_prices(session, studio: Studio, field: str, value: int) -> No
     await session.commit()
 
 
-@router.message(OwnerStates.waiting_price_edit)
+@router.message(OwnerStates.waiting_price_edit, _NOT_COMMAND)
 async def owner_price_edit(message: Message, session: AsyncSession, user: User, state: FSMContext):
     raw = (message.text or "").strip()
     if not raw.isdigit():
@@ -355,7 +356,7 @@ async def cb_weekend(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@router.message(OwnerStates.waiting_weekend_price)
+@router.message(OwnerStates.waiting_weekend_price, _NOT_COMMAND)
 async def owner_weekend_price(message: Message, session: AsyncSession, user: User, state: FSMContext):
     raw = (message.text or "").strip()
     if not raw.isdigit():
@@ -378,7 +379,7 @@ async def cb_night(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@router.message(OwnerStates.waiting_night_price)
+@router.message(OwnerStates.waiting_night_price, _NOT_COMMAND)
 async def owner_night_price(message: Message, session: AsyncSession, user: User, state: FSMContext):
     raw = (message.text or "").strip()
     if not raw.isdigit():
@@ -530,7 +531,7 @@ async def cb_block_resource(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@router.message(OwnerStates.waiting_block_interval)
+@router.message(OwnerStates.waiting_block_interval, _NOT_COMMAND)
 async def owner_block_interval(message: Message, session: AsyncSession, user: User, state: FSMContext):
     data = await state.get_data()
     resource = await session.get(Resource, data.get("block_resource_id"))
@@ -637,7 +638,7 @@ async def cb_add_resource(callback: CallbackQuery, session: AsyncSession, user: 
     await callback.answer()
 
 
-@router.message(OwnerStates.waiting_extra_resource)
+@router.message(OwnerStates.waiting_extra_resource, _NOT_COMMAND)
 async def owner_extra_resource(message: Message, session: AsyncSession, user: User, state: FSMContext):
     studio = await get_owner_studio(session, user)
     if not studio:

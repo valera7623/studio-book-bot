@@ -12,6 +12,15 @@ def test_start_handler_registered():
     assert user_commands.cmd_start is not None
 
 
+def test_command_routers_load_before_fsm():
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[1] / "src" / "bot" / "loader.py").read_text(
+        encoding="utf-8"
+    )
+    assert text.index("user_commands.router") < text.index("owner.router")
+
+
 async def test_start_answers_welcome(session):
     user = User(telegram_id=1, first_name="Ира", language_code="ru")
     session.add(user)

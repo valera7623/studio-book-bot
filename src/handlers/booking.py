@@ -43,6 +43,7 @@ from src.states.booking import BookingStates
 from src.utils.validators import validate_name, validate_phone
 
 router = Router()
+_NOT_COMMAND = F.text & ~F.text.startswith("/")
 
 
 def _days_ahead(tz_name: str, n: int = 7) -> list[date]:
@@ -205,7 +206,7 @@ async def cb_pick_slot(callback: CallbackQuery, session: AsyncSession, state: FS
     await callback.answer()
 
 
-@router.message(BookingStates.waiting_name)
+@router.message(BookingStates.waiting_name, _NOT_COMMAND)
 async def booking_name(message: Message, state: FSMContext):
     ok, value = validate_name(message.text or "")
     if not ok:
@@ -216,7 +217,7 @@ async def booking_name(message: Message, state: FSMContext):
     await message.answer("Номер телефона (например +79991234567)")
 
 
-@router.message(BookingStates.waiting_phone)
+@router.message(BookingStates.waiting_phone, _NOT_COMMAND)
 async def booking_phone(message: Message, state: FSMContext):
     ok, value = validate_phone(message.text or "")
     if not ok:
