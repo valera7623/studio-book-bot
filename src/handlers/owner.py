@@ -30,6 +30,12 @@ from src.services.formatters import format_interval_local, format_slot_local
 from src.services.ical import build_calendar
 from src.services.outreach import owner_cheat_sheet, owner_copy_pack
 from src.services.slots import create_block, parse_block_interval, parse_hours
+from src.services.stats import (
+    format_cabinet_audience,
+    format_no_studio_stats_text,
+    format_studio_stats_text,
+    studio_audience_counts,
+)
 from src.services.studios import (
     get_owner_studio,
     get_primary_resource,
@@ -93,16 +99,19 @@ async def show_cabinet(message: Message, session: AsyncSession, user: User) -> N
             f"шаг {resource.slot_step_min} мин, буфер {resource.buffer_min} мин"
         )
     halls = "\n".join(res_lines) if res_lines else "—"
+    audience = format_cabinet_audience(await studio_audience_counts(session, studio.id))
     text = (
         f"🏠 <b>{studio.name}</b>\n"
         f"slug: <code>{studio.slug}</code>\n"
         f"Тариф: {tariff_label(studio.tariff)}\n"
+        f"{audience}\n"
         f"Окно оплаты: {studio.hold_ttl_minutes} мин\n"
         f"Предоплата: {studio.prepay_percent}%\n"
         f"Отмена бесплатно за {studio.cancel_free_hours} ч "
         f"(удержание {studio.late_cancel_retain_percent}%)\n\n"
         f"{halls}\n\n"
         "Клиенты записываются по ссылке. Это не CRM.\n"
+        "Сколько клиентов — здесь и в /stats, Super Admin не нужен.\n"
         "Непонятно, что нажать — кнопка «Шпаргалка»."
     )
     await message.answer(text, reply_markup=owner_cabinet_keyboard())
@@ -117,6 +126,16 @@ async def cmd_studio(message: Message, session: AsyncSession, user: User, state:
         await state.set_state(OwnerStates.waiting_studio_name)
         return
     await show_cabinet(message, session, user)
+
+
+@router.message(Command("stats"))
+async def cmd_stats(message: Message, session: AsyncSession, user: User):
+    studio = await get_owner_studio(session, user)
+    if studio is None:
+        await message.answer(format_no_studio_stats_text())
+        return
+    counts = await studio_audience_counts(session, studio.id)
+    await message.answer(format_studio_stats_text(studio, counts))
 
 
 @router.callback_query(F.data == "ow:new")
