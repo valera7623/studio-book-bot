@@ -110,8 +110,10 @@ async def test_admin_support_text_shows_payform_and_counts(session):
     text = await platform_support_text(session)
     assert "Касса Prodamus" in text
     assert "Webhook:" in text
+    assert "Подписчики тарифа" in text
     assert "Платежи:" in text
     assert "Брони:" in text
+    assert "Super Admin" in text
 
 
 def test_go_live_runbook_has_webhook():

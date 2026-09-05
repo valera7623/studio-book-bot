@@ -9,9 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import settings
 from src.database.models.booking import Booking
 from src.database.models.payment import Payment
-from src.database.models.studio import Studio
-from src.database.models.user import User
 from src.services import prodamus
+from src.services.stats import format_platform_subscribers, platform_subscriber_counts
 
 router = Router()
 
@@ -23,8 +22,7 @@ def _count_lines(rows: list[tuple[str, int]], empty: str = "—") -> str:
 
 
 async def platform_support_text(session: AsyncSession) -> str:
-    users_n = await session.scalar(select(func.count()).select_from(User)) or 0
-    studios_n = await session.scalar(select(func.count()).select_from(Studio)) or 0
+    subs = await platform_subscriber_counts(session)
     pay_rows = (
         await session.execute(
             select(Payment.status, func.count()).group_by(Payment.status)
@@ -43,11 +41,13 @@ async def platform_support_text(session: AsyncSession) -> str:
         "🛠️ <b>Саппорт платформы</b>\n\n"
         f"Касса Prodamus: <b>{payform}</b>\n"
         f"Webhook: <code>{webhook or 'задайте PUBLIC_BASE_URL'}</code>\n"
-        f"👥 Пользователей: <b>{users_n}</b>\n"
-        f"🏠 Студий: <b>{studios_n}</b>\n"
+        f"{format_platform_subscribers(subs)}\n"
+        f"👥 Пользователей бота: <b>{subs['users']}</b>\n"
+        f"🏠 Студий: <b>{subs['studios']}</b>\n"
         f"Платежи: {_count_lines([(str(s), int(n)) for s, n in pay_rows])}\n"
         f"Брони: {_count_lines([(str(s), int(n)) for s, n in book_rows])}\n\n"
-        "<i>Только для ID из ADMINS. Это не кабинет владельца студии.</i>"
+        "<i>Только для ID из ADMINS. Super Admin в этом боте нет. "
+        "Клиенты своей студии — /stats и /studio.</i>"
     )
 
 
