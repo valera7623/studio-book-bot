@@ -35,6 +35,10 @@ def tariff_label(tariff: str) -> str:
     return "Free"
 
 
+def is_paid_tariff(tariff: str) -> bool:
+    return tariff in (TARIFF_STARTER, TARIFF_PLUS)
+
+
 def is_subscription_active(studio: Studio, now: datetime | None = None) -> bool:
     if studio.tariff == TARIFF_FREE:
         return True
@@ -44,6 +48,26 @@ def is_subscription_active(studio: Studio, now: datetime | None = None) -> bool:
     if until.tzinfo is None:
         until = until.replace(tzinfo=timezone.utc)
     return until > (now or utcnow())
+
+
+def is_paid_subscription_active(studio: Studio, now: datetime | None = None) -> bool:
+    return is_paid_tariff(studio.tariff) and is_subscription_active(studio, now)
+
+
+async def list_active_paid_studios(
+    session: AsyncSession, now: datetime | None = None
+) -> list[Studio]:
+    moment = now or utcnow()
+    studios = list(
+        (
+            await session.execute(
+                select(Studio)
+                .where(Studio.tariff.in_((TARIFF_STARTER, TARIFF_PLUS)))
+                .order_by(Studio.id.asc())
+            )
+        ).scalars().all()
+    )
+    return [studio for studio in studios if is_paid_subscription_active(studio, moment)]
 
 
 async def count_resources(session: AsyncSession, studio_id: int) -> int:

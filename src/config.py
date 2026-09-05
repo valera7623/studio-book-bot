@@ -19,6 +19,8 @@ class Settings(BaseSettings):
 
     # Саппорт продукта, не контент справочника
     ADMINS: List[int] = Field(default_factory=list)
+    # Superadmin: платные подписчики (кол-во и Telegram ID). Пусто = те же, что ADMINS.
+    SUPERADMINS: List[int] = Field(default_factory=list)
 
     SQLITE_PATH: Path = Field(
         default=PROJECT_ROOT / "data" / "studio_book.db",
@@ -62,7 +64,7 @@ class Settings(BaseSettings):
         case_sensitive=False,
     )
 
-    @field_validator("ADMINS", mode="before")
+    @field_validator("ADMINS", "SUPERADMINS", mode="before")
     @classmethod
     def parse_int_list(cls, v):
         if isinstance(v, list):
@@ -78,7 +80,11 @@ class Settings(BaseSettings):
 
     @property
     def admin_ids(self) -> frozenset[int]:
-        return frozenset(self.ADMINS or [])
+        return frozenset(list(self.ADMINS or []) + list(self.SUPERADMINS or []))
+
+    @property
+    def superadmin_ids(self) -> frozenset[int]:
+        return frozenset(self.SUPERADMINS or self.ADMINS or [])
 
     @property
     def sqlite_dsn(self) -> str:

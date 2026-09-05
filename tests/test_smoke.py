@@ -112,6 +112,53 @@ async def test_admin_support_text_shows_payform_and_counts(session):
     assert "Webhook:" in text
     assert "Платежи:" in text
     assert "Брони:" in text
+    assert "Платных подписчиков:" in text
+    assert "/superadmin" in text
+
+
+async def test_superadmin_lists_paid_subscriber_ids(session):
+    from datetime import datetime, timedelta, timezone
+
+    from src.database.models.studio import TARIFF_FREE, TARIFF_PLUS, TARIFF_STARTER, Studio
+    from src.handlers.admin_commands import paid_subscribers_messages
+    from src.services.tariffs import list_active_paid_studios
+
+    now = datetime(2026, 9, 5, 12, 0, tzinfo=timezone.utc)
+    for i, (tid, tariff, until) in enumerate(
+        (
+            (111001, TARIFF_STARTER, now + timedelta(days=10)),
+            (111002, TARIFF_PLUS, now + timedelta(days=3)),
+            (111003, TARIFF_STARTER, now - timedelta(days=1)),
+            (111004, TARIFF_FREE, now + timedelta(days=30)),
+        ),
+        start=1,
+    ):
+        owner = User(telegram_id=tid, first_name=f"Owner{i}", language_code="ru")
+        session.add(owner)
+        await session.flush()
+        session.add(
+            Studio(
+                slug=f"studio-{i}",
+                name=f"Студия {i}",
+                owner_id=owner.id,
+                owner_telegram_id=tid,
+                tariff=tariff,
+                subscription_until=until,
+            )
+        )
+    await session.commit()
+
+    paid = await list_active_paid_studios(session, now=now)
+    ids = {s.owner_telegram_id for s in paid}
+    assert ids == {111001, 111002}
+
+    chunks = await paid_subscribers_messages(session, now=now)
+    text = "\n".join(chunks)
+    assert "Платных подписчиков: <b>2</b>" in text
+    assert "<code>111001</code>" in text
+    assert "<code>111002</code>" in text
+    assert "111003" not in text
+    assert "111004" not in text
 
 
 def test_go_live_runbook_has_webhook():

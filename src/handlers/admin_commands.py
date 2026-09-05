@@ -1,6 +1,8 @@
-"""Саппорт платформы: сводка, не контент."""
+"""Саппорт платформы: сводка, не контент. Superadmin — платные подписчики."""
 
-from aiogram import F, Router
+from html import escape
+
+from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 from sqlalchemy import func, select
@@ -11,9 +13,13 @@ from src.database.models.booking import Booking
 from src.database.models.payment import Payment
 from src.database.models.studio import Studio
 from src.database.models.user import User
+from src.filters import AdminFilter, SuperadminFilter
 from src.services import prodamus
+from src.services.tariffs import list_active_paid_studios, tariff_label
 
 router = Router()
+
+TELEGRAM_MESSAGE_LIMIT = 4000
 
 
 def _count_lines(rows: list[tuple[str, int]], empty: str = "—") -> str:
@@ -22,9 +28,33 @@ def _count_lines(rows: list[tuple[str, int]], empty: str = "—") -> str:
     return ", ".join(f"{status} {n}" for status, n in rows)
 
 
+def _until_label(studio: Studio) -> str:
+    until = studio.subscription_until
+    if until is None:
+        return "—"
+    return until.strftime("%d.%m.%Y")
+
+
+def _chunk_messages(header: str, lines: list[str], limit: int = TELEGRAM_MESSAGE_LIMIT) -> list[str]:
+    if not lines:
+        return [header]
+    chunks: list[str] = []
+    current = header
+    for line in lines:
+        candidate = f"{current}\n{line}"
+        if len(candidate) <= limit:
+            current = candidate
+            continue
+        chunks.append(current)
+        current = f"{header}\n{line}"
+    chunks.append(current)
+    return chunks
+
+
 async def platform_support_text(session: AsyncSession) -> str:
     users_n = await session.scalar(select(func.count()).select_from(User)) or 0
     studios_n = await session.scalar(select(func.count()).select_from(Studio)) or 0
+    paid = await list_active_paid_studios(session)
     pay_rows = (
         await session.execute(
             select(Payment.status, func.count()).group_by(Payment.status)
@@ -45,12 +75,42 @@ async def platform_support_text(session: AsyncSession) -> str:
         f"Webhook: <code>{webhook or 'задайте PUBLIC_BASE_URL'}</code>\n"
         f"👥 Пользователей: <b>{users_n}</b>\n"
         f"🏠 Студий: <b>{studios_n}</b>\n"
+        f"💳 Платных подписчиков: <b>{len(paid)}</b> — /superadmin\n"
         f"Платежи: {_count_lines([(str(s), int(n)) for s, n in pay_rows])}\n"
         f"Брони: {_count_lines([(str(s), int(n)) for s, n in book_rows])}\n\n"
-        "<i>Только для ID из ADMINS. Это не кабинет владельца студии.</i>"
+        "<i>Только для ID из ADMINS / SUPERADMINS. Это не кабинет владельца студии.</i>"
     )
 
 
-@router.message(Command("admin"), F.from_user.id.in_(settings.ADMINS))
+def paid_subscribers_header(count: int) -> str:
+    return f"👑 <b>Superadmin</b>\n\nПлатных подписчиков: <b>{count}</b>"
+
+
+def format_paid_subscriber_line(studio: Studio) -> str:
+    name = escape(studio.name or "—")
+    slug = escape(studio.slug or "—")
+    return (
+        f"• TG <code>{studio.owner_telegram_id}</code> · студия #{studio.id} "
+        f"{name} (<code>{slug}</code>)\n"
+        f"  {tariff_label(studio.tariff)} · до {_until_label(studio)}"
+    )
+
+
+async def paid_subscribers_messages(session: AsyncSession, now=None) -> list[str]:
+    studios = await list_active_paid_studios(session, now=now)
+    header = paid_subscribers_header(len(studios))
+    if not studios:
+        return [header + "\n\nНет активных Старт / Плюс."]
+    lines = [format_paid_subscriber_line(studio) for studio in studios]
+    return _chunk_messages(header + "\n", lines)
+
+
+@router.message(Command("admin"), AdminFilter())
 async def cmd_admin(message: Message, session: AsyncSession):
     await message.answer(await platform_support_text(session))
+
+
+@router.message(Command("superadmin"), SuperadminFilter())
+async def cmd_superadmin(message: Message, session: AsyncSession):
+    for chunk in await paid_subscribers_messages(session):
+        await message.answer(chunk)

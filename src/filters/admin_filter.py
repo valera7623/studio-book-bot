@@ -9,3 +9,8 @@ from src.config import settings
 class AdminFilter(BaseFilter):
     async def __call__(self, event: Union[Message, CallbackQuery]) -> bool:
         return event.from_user.id in settings.admin_ids
+
+
+class SuperadminFilter(BaseFilter):
+    async def __call__(self, event: Union[Message, CallbackQuery]) -> bool:
+        return event.from_user.id in settings.superadmin_ids

@@ -1,0 +1,85 @@
+date_batch,studio_name,city,catalog_url,telegram_url,skip_reason,send_today,draft_message,note_for_human
+2026-09-05,АСС,Новосибирск,https://acc-foto.ru/,https://t.me/photo_studio_nsk,,да,"Здравствуйте! Вижу, запись в АСС (почасовая аренда от 1 190 ₽) (Новосибирск) идёт через Telegram / переписку.
+
+Сделали бота только под почасовую аренду зала: клиент по одной ссылке выбирает слот, вносит предоплату, неоплаченный слот сгорает, напоминание за 24 ч и за 2 ч.
+
+Не CRM и не виджет. За вечер: название, зал, часы, цена — сразу ссылка и QR.
+Тарифы 490 / 990 ₽ в месяц. Демо: https://t.me/Studio_book_bot
+Коротко на сайте: https://studiobook.com.ru
+
+Если не актуально — напишите, больше не потревожу.","Источник: acc-foto.ru, кнопка «Написать в Telegram» → @photo_studio_nsk; проверить глазами, что это ЛС студии."
+2026-09-05,Glory,Новосибирск,https://taplink.cc/studio_glory,https://t.me/glory_studio,,да,"Здравствуйте! Вижу, запись в Glory (аренда от 1000 ₽) (Новосибирск) идёт через Telegram / переписку.
+
+Сделали бота только под почасовую аренду зала: клиент по одной ссылке выбирает слот, вносит предоплату, неоплаченный слот сгорает, напоминание за 24 ч и за 2 ч.
+
+Не CRM и не виджет. За вечер: название, зал, часы, цена — сразу ссылка и QR.
+Тарифы 490 / 990 ₽ в месяц. Демо: https://t.me/Studio_book_bot
+Коротко на сайте: https://studiobook.com.ru
+
+Если не актуально — напишите, больше не потревожу.","Источник: Taplink studio_glory, блок «Телеграм» → @glory_studio; проверить, что открывается личка, не канал."
+2026-09-05,Promystory,Новосибирск,https://taplink.cc/promystory,https://t.me/promystore,,да,"Здравствуйте! Вижу, запись в Promystory (Красный проспект 17 / Горького 66) (Новосибирск) идёт через Telegram / переписку.
+
+Сделали бота только под почасовую аренду зала: клиент по одной ссылке выбирает слот, вносит предоплату, неоплаченный слот сгорает, напоминание за 24 ч и за 2 ч.
+
+Не CRM и не виджет. За вечер: название, зал, часы, цена — сразу ссылка и QR.
+Тарифы 490 / 990 ₽ в месяц. Демо: https://t.me/Studio_book_bot
+Коротко на сайте: https://studiobook.com.ru
+
+Если не актуально — напишите, больше не потревожу.","Источник: Taplink promystory, кликабельный TG-баннер → @promystore; проверить визуально ЛС и адрес."
+2026-09-05,Studio 2799,Новосибирск,https://taplink.cc/service2799,https://t.me/foto2799studio,,да,"Здравствуйте! Вижу, запись в Studio 2799 (Новосибирск) идёт через Telegram / переписку.
+
+Сделали бота только под почасовую аренду зала: клиент по одной ссылке выбирает слот, вносит предоплату, неоплаченный слот сгорает, напоминание за 24 ч и за 2 ч.
+
+Не CRM и не виджет. За вечер: название, зал, часы, цена — сразу ссылка и QR.
+Тарифы 490 / 990 ₽ в месяц. Демо: https://t.me/Studio_book_bot
+Коротко на сайте: https://studiobook.com.ru
+
+Если не актуально — напишите, больше не потревожу.","Источник: Taplink service2799, соцссылка TG → @foto2799studio; проверить, что username студии принимает ЛС."
+2026-09-05,Main,Новосибирск,https://nvb.ru/firmy-novosibirska/interernaya-fotostudiya-main.html,https://t.me/dailymain,,да,"Здравствуйте! Вижу, запись в Main (Добролюбова 31) (Новосибирск) идёт через Telegram / переписку.
+
+Сделали бота только под почасовую аренду зала: клиент по одной ссылке выбирает слот, вносит предоплату, неоплаченный слот сгорает, напоминание за 24 ч и за 2 ч.
+
+Не CRM и не виджет. За вечер: название, зал, часы, цена — сразу ссылка и QR.
+Тарифы 490 / 990 ₽ в месяц. Демо: https://t.me/Studio_book_bot
+Коротко на сайте: https://studiobook.com.ru
+
+Если не актуально — напишите, больше не потревожу.",Источник: карточка NVB «Main в Telegram.me: dailymain»; проверить ЛС и число залов перед отправкой.
+2026-09-05,Verba 2.0,Новосибирск,https://nvb.ru/firmy-novosibirska/fotostudiya-verba-20.html,https://t.me/verba_std,,да,"Здравствуйте! Вижу, запись в Verba 2.0 (Кирова 82) (Новосибирск) идёт через Telegram / переписку.
+
+Сделали бота только под почасовую аренду зала: клиент по одной ссылке выбирает слот, вносит предоплату, неоплаченный слот сгорает, напоминание за 24 ч и за 2 ч.
+
+Не CRM и не виджет. За вечер: название, зал, часы, цена — сразу ссылка и QR.
+Тарифы 490 / 990 ₽ в месяц. Демо: https://t.me/Studio_book_bot
+Коротко на сайте: https://studiobook.com.ru
+
+Если не актуально — напишите, больше не потревожу.","Источник: карточка NVB «Verba 2.0 в Telegram.me: verba_std»; проверить, что это студия/админ, не канал."
+2026-09-05,Втопе,Новосибирск,https://nvb.ru/firmy-novosibirska/studiya-vtope.html,https://t.me/vtope_studio_nsk,,да,"Здравствуйте! Вижу, запись в Втопе (Новосибирск) идёт через Telegram / переписку.
+
+Сделали бота только под почасовую аренду зала: клиент по одной ссылке выбирает слот, вносит предоплату, неоплаченный слот сгорает, напоминание за 24 ч и за 2 ч.
+
+Не CRM и не виджет. За вечер: название, зал, часы, цена — сразу ссылка и QR.
+Тарифы 490 / 990 ₽ в месяц. Демо: https://t.me/Studio_book_bot
+Коротко на сайте: https://studiobook.com.ru
+
+Если не актуально — напишите, больше не потревожу.",Источник: карточка NVB «Втопе в Telegram.me: vtope_studio_nsk»; визуально проверить ЛС и признак почасовой аренды.
+2026-09-05,In dk studio,Новосибирск,https://nvb.ru/firmy-novosibirska/fotostudiya-in-dk-studio.html,https://t.me/domskolesom,,да,"Здравствуйте! Вижу, запись в In dk studio (Большевистская 12Б) (Новосибирск) идёт через Telegram / переписку.
+
+Сделали бота только под почасовую аренду зала: клиент по одной ссылке выбирает слот, вносит предоплату, неоплаченный слот сгорает, напоминание за 24 ч и за 2 ч.
+
+Не CRM и не виджет. За вечер: название, зал, часы, цена — сразу ссылка и QR.
+Тарифы 490 / 990 ₽ в месяц. Демо: https://t.me/Studio_book_bot
+Коротко на сайте: https://studiobook.com.ru
+
+Если не актуально — напишите, больше не потревожу.","Источник: карточка NVB «In dk studio в Telegram.me: domskolesom»; проверить, что username относится к студии/админу."
+2026-09-05,Fashion Box Новосибирск,Новосибирск,https://xn--90ashfqn2a3b.xn--p1ai/p/3affdf/,https://t.me/fashionboxbotbot,сеть,нет,,"Источник: фэшнбокс.рф/Taplink, messenger «Написать в Telegram» → @fashionboxbotbot; похоже на бота/сеть, не брать в дневную порцию."
+2026-09-05,Domik photo,Новосибирск,https://domikphoto.ru/p/a81068/,https://t.me/domik_photo,канал без ЛС,нет,,"Источник: domikphoto.ru, пункт меню «Telegram канал» → @domik_photo; не писать как в ЛС."
+2026-09-05,Snap,Новосибирск,https://snap-studio.ru/,https://t.me/+79950101091,инвайт t.me/+…,нет,,"Источник: snap-studio.ru, «Написать в Telegram по номеру» ведёт на t.me/+номер; инвайт запрещён."
+2026-09-05,Bernini,Новосибирск,https://taplink.cc/bernini,https://t.me/+79833208955,инвайт t.me/+…,нет,,"Источник: Taplink Bernini, блок TELEGRAM → t.me/+номер; пропустить как инвайт."
+2026-09-05,TriO,Новосибирск,https://trio-photostudio.ru/,,нет TG,нет,,"Источник: trio-photostudio.ru, бронирование через телефон/Telegram по номеру без username; телефон не парсим."
+2026-09-05,Photoroof,Новосибирск,https://photoplace.pro/novosibirsk/3490-photoroof,,нет TG,нет,,"Источник: Photoplace/Smile snippet, бронь 24/7 через yclients; публичный TG username не найден."
+2026-09-05,Moonstone,Новосибирск,https://photoplace.pro/novosibirsk/moonstone,,сеть,нет,,"Источник: Photoplace NSK, у Moonstone 35 залов в выгрузке; сеть/крупный формат, не приоритет."
+2026-09-05,Твоя фантазия,Новосибирск,https://yourfantasyphotostudio.orgs.biz/,https://t.me/anyayarche_bot,нет TG,нет,,"Источник: orgs.biz «Твоя фантазия», указан TG-бот @anyayarche_bot; не похоже на ЛС студии/админа."
+2026-09-05,Inside,Новосибирск,https://taplink.cc/inside.photostudio.nsk,,нет TG,нет,,Источник: Taplink inside.photostudio.nsk; публичный t.me username в HTML не найден.
+2026-09-05,Mikki,Новосибирск,https://taplink.cc/mikki.photo,,нет TG,нет,,"Источник: Taplink mikki.photo; аренда есть, но публичный TG username не найден."
+2026-09-05,Spitol,Новосибирск,https://photoplace.pro/novosibirsk/spitol,,нет TG,нет,,Источник: Instagram snippet «телеграмм/max» без username и Photoplace; не выдумывать handle.
+2026-09-05,Royal Studio,Новосибирск,https://www.nvb.ru/firmy-novosibirska/interernaya-fotostudiya-royal-studio.html,,нет TG,нет,,"Источник: NVB snippet «Royal Studio в Telegram.me: 79939949485»; это номер, не username."

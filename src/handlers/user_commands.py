@@ -55,4 +55,6 @@ async def cmd_help(message: Message, user):
     if user.telegram_id in settings.admin_ids:
         parts.append("")
         parts.append("/admin — сводка платформы (саппорт)")
+    if user.telegram_id in settings.superadmin_ids:
+        parts.append("/superadmin — платные подписчики: кол-во и Telegram ID")
     await message.answer("\n".join(parts))
