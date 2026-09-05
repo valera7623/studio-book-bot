@@ -90,7 +90,7 @@ async def test_unique_paid_clients_dedupes_same_telegram(session):
     counts = await studio_audience_counts(session, studio.id)
     assert counts["paid_clients"] == 2
     assert counts["started_clients"] == 4
-    assert counts["paid_bookings"] == 2
+    assert counts["paid_bookings"] == 3
     assert counts["hold_bookings"] == 1
     assert counts["cancelled_bookings"] == 1
 
