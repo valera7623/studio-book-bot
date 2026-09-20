@@ -25,7 +25,7 @@ def create_async_engine(dsn: str | None = None):
             cursor = dbapi_conn.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.execute("PRAGMA journal_mode=WAL")
-            cursor.execute("PRAGMA busy_timeout=5000")
+            cursor.execute("PRAGMA busy_timeout=30000")
             cursor.close()
 
         @event.listens_for(eng.sync_engine, "begin")

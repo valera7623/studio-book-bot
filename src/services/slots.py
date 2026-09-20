@@ -3,11 +3,12 @@ from __future__ import annotations
 import asyncio
 import math
 import re
+import threading
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
@@ -21,17 +22,28 @@ from src.database.models.booking import (
 )
 from src.database.models.studio import Resource, Studio
 
-_resource_locks: dict[int, asyncio.Lock] = {}
-_resource_locks_guard = asyncio.Lock()
+# Ключ: (id(event_loop), resource_id) — иначе pytest/новый loop ломает Lock.
+_resource_locks: dict[tuple[int, int], asyncio.Lock] = {}
+_resource_lock_guards: dict[int, asyncio.Lock] = {}
+_locks_meta = threading.Lock()
 
 
 async def _lock_for_resource(resource_id: int) -> asyncio.Lock:
-    async with _resource_locks_guard:
-        lock = _resource_locks.get(resource_id)
-        if lock is None:
-            lock = asyncio.Lock()
-            _resource_locks[resource_id] = lock
-        return lock
+    loop = asyncio.get_running_loop()
+    loop_id = id(loop)
+    with _locks_meta:
+        guard = _resource_lock_guards.get(loop_id)
+        if guard is None:
+            guard = asyncio.Lock()
+            _resource_lock_guards[loop_id] = guard
+    async with guard:
+        with _locks_meta:
+            key = (loop_id, resource_id)
+            lock = _resource_locks.get(key)
+            if lock is None:
+                lock = asyncio.Lock()
+                _resource_locks[key] = lock
+            return lock
 
 
 class Slot:
@@ -337,19 +349,30 @@ async def create_hold(
 ) -> Booking | None:
     lock = await _lock_for_resource(resource.id)
     async with lock:
-        return await _create_hold_locked(
-            session,
-            resource=resource,
-            starts_at=starts_at,
-            ends_at=ends_at,
-            client_telegram_id=client_telegram_id,
-            client_name=client_name,
-            client_phone=client_phone,
-            client_user_id=client_user_id,
-            quoted_price_rub=quoted_price_rub,
-            prepay_amount_rub=prepay_amount_rub,
-            studio=studio,
-        )
+        last_exc: OperationalError | None = None
+        for attempt in range(5):
+            try:
+                return await _create_hold_locked(
+                    session,
+                    resource=resource,
+                    starts_at=starts_at,
+                    ends_at=ends_at,
+                    client_telegram_id=client_telegram_id,
+                    client_name=client_name,
+                    client_phone=client_phone,
+                    client_user_id=client_user_id,
+                    quoted_price_rub=quoted_price_rub,
+                    prepay_amount_rub=prepay_amount_rub,
+                    studio=studio,
+                )
+            except OperationalError as exc:
+                last_exc = exc
+                if session.in_transaction():
+                    await session.rollback()
+                await asyncio.sleep(0.05 * (attempt + 1))
+        if last_exc is not None:
+            raise last_exc
+        return None
 
 
 async def _create_hold_locked(
