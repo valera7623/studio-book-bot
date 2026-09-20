@@ -6,37 +6,48 @@
   <title>Публичная оферта — Studio-book</title>
   <meta name="description" content="Публичная оферта о реализации товаров/работ/услуг. Самозанятый Попов Валерий Михайлович. Сайт https://studiobook.com.ru">
   <style>
-    :root { color-scheme: light; }
+    :root { color-scheme: dark; }
     * { box-sizing: border-box; }
     body {
+      margin: 0;
       font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-      max-width: 44rem;
-      margin: 0 auto;
-      padding: 1.5rem 1rem 3rem;
+      color: #f6efe4;
+      background:
+        radial-gradient(900px 420px at 90% 0%, rgba(240, 180, 90, .22), transparent 50%),
+        linear-gradient(180deg, #1a1010, #0c090b);
       line-height: 1.55;
-      color: #111;
-      background: #fff;
     }
+    .wrap { max-width: 44rem; margin: 0 auto; padding: 1.4rem 1rem 3rem; }
     nav { font-size: .95rem; margin-bottom: 1.25rem; }
+    nav a { color: #f0b45a; }
     h1 { font-size: 1.55rem; line-height: 1.25; margin: 0 0 .5rem; }
     h2 { font-size: 1.15rem; margin: 1.6rem 0 .5rem; }
     p, li { font-size: .98rem; }
-    a { color: #1565c0; }
-    .meta { color: #444; }
+    a { color: #f0b45a; }
+    .paper {
+      background: #fff8ee;
+      color: #1b1410;
+      border-radius: 1rem;
+      padding: 1.25rem 1.15rem 1.6rem;
+    }
+    .paper a { color: #9a4a16; }
+    .meta { color: #5c4d40; }
     .doc p { margin: .55rem 0; }
     .doc ol { padding-left: 1.2rem; }
     .doc li { margin: .35rem 0; }
     footer {
-      margin-top: 2.5rem;
+      margin-top: 1.6rem;
       padding-top: 1rem;
-      border-top: 1px solid #ddd;
+      border-top: 1px solid rgba(255, 214, 170, .18);
       font-size: .9rem;
-      color: #333;
+      color: #c4b8a8;
     }
   </style>
 </head>
 <body>
+  <div class="wrap">
   <nav><a href="/">Главная</a> · Оферта · <a href="/offer.pdf">PDF</a></nav>
+  <div class="paper">
   <header>
     <h1>Публичная оферта о реализации товаров/работ/услуг</h1>
     <p class="meta">Дата вступления в силу «30» августа 2026 г.<br>город Рубцовск</p>
@@ -202,9 +213,11 @@
     <p>Контактный адрес электронной почты Исполнителя: <a href="mailto:valera7623@gmail.com">valera7623@gmail.com</a></p>
     <p>Telegram-бот: <a href="{{BOT_LINK}}">t.me/{{BOT_USERNAME}}</a></p>
   </article>
+  </div>
 
   <footer>
     <p><a href="/">На главную</a> · <a href="/#prices">Стоимость услуг</a> · <a href="/offer.pdf">Скачать PDF</a></p>
   </footer>
+  </div>
 </body>
 </html>
