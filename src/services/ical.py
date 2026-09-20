@@ -1,7 +1,10 @@
 """Генерация .ics без внешних парсеров."""
 
+import hashlib
+import hmac
 from datetime import datetime, timezone
 
+from src.config import settings
 from src.database.models.booking import Booking
 from src.database.models.studio import Resource, Studio
 
@@ -20,10 +23,28 @@ def _escape(text: str) -> str:
     )
 
 
+def feed_token(slug: str) -> str:
+    secret = (settings.BOT_TOKEN or "studio-book").encode("utf-8")
+    return hmac.new(secret, slug.encode("utf-8"), hashlib.sha256).hexdigest()[:20]
+
+
+def feed_token_ok(slug: str, token: str) -> bool:
+    expected = feed_token(slug)
+    got = (token or "").strip()
+    if len(got) != len(expected):
+        return False
+    return hmac.compare_digest(expected, got)
+
+
+def feed_url(slug: str, base_url: str) -> str:
+    root = base_url.rstrip("/")
+    return f"{root}/ical/{slug}/{feed_token(slug)}.ics"
+
+
 def booking_to_vevent(booking: Booking, studio: Studio, resource: Resource) -> str:
     uid = f"booking-{booking.id}@studio-book"
     summary = _escape(f"{studio.name}: {resource.name}")
-    description = _escape(f"{booking.client_name} {booking.client_phone or ''}".strip())
+    description = _escape(booking.client_name or "Бронь")
     return "\n".join(
         [
             "BEGIN:VEVENT",

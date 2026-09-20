@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import math
 import re
 from datetime import datetime, time, timedelta, timezone
@@ -18,6 +19,29 @@ from src.database.models.booking import (
     Booking,
 )
 from src.database.models.studio import Resource, Studio
+
+_resource_locks: dict[int, asyncio.Lock] = {}
+_resource_locks_guard = asyncio.Lock()
+
+
+async def _lock_for_resource(resource_id: int) -> asyncio.Lock:
+    async with _resource_locks_guard:
+        lock = _resource_locks.get(resource_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            _resource_locks[resource_id] = lock
+        return lock
+
+
+async def _sqlite_begin_immediate(session: AsyncSession) -> None:
+    bind = session.get_bind()
+    if bind is None or bind.dialect.name != "sqlite":
+        return
+    try:
+        conn = await session.connection()
+        await conn.exec_driver_sql("BEGIN IMMEDIATE")
+    except Exception:
+        pass
 
 
 class Slot:
@@ -190,20 +214,20 @@ def shoot_minutes(resource: Resource, duration_min: int) -> int:
     return duration_min
 
 
-async def expire_holds(session: AsyncSession) -> int:
+async def expire_holds(session: AsyncSession) -> list[Booking]:
     now = utcnow()
     stmt = select(Booking).where(
         Booking.status == STATUS_HOLD,
         Booking.hold_expires_at.is_not(None),
         Booking.hold_expires_at <= now,
     )
-    rows = (await session.execute(stmt)).scalars().all()
+    rows = list((await session.execute(stmt)).scalars().all())
     for booking in rows:
         booking.status = "cancelled"
         booking.cancel_reason = "hold_expired"
     if rows:
         await session.commit()
-    return len(rows)
+    return rows
 
 
 async def occupied_intervals(
@@ -321,9 +345,41 @@ async def create_hold(
     prepay_amount_rub: int = 0,
     studio: Studio | None = None,
 ) -> Booking | None:
+    lock = await _lock_for_resource(resource.id)
+    async with lock:
+        return await _create_hold_locked(
+            session,
+            resource=resource,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            client_telegram_id=client_telegram_id,
+            client_name=client_name,
+            client_phone=client_phone,
+            client_user_id=client_user_id,
+            quoted_price_rub=quoted_price_rub,
+            prepay_amount_rub=prepay_amount_rub,
+            studio=studio,
+        )
+
+
+async def _create_hold_locked(
+    session: AsyncSession,
+    *,
+    resource: Resource,
+    starts_at: datetime,
+    ends_at: datetime,
+    client_telegram_id: int,
+    client_name: str,
+    client_phone: str | None,
+    client_user_id: int | None,
+    quoted_price_rub: int,
+    prepay_amount_rub: int,
+    studio: Studio | None,
+) -> Booking | None:
     await expire_holds(session)
     starts_at = _as_utc(starts_at)
     ends_at = _as_utc(ends_at)
+    await _sqlite_begin_immediate(session)
     if await has_overlap(session, resource=resource, starts_at=starts_at, ends_at=ends_at):
         return None
     if studio is None:
@@ -372,11 +428,33 @@ async def create_block(
     owner_telegram_id: int,
     note: str = "Блок",
 ) -> Booking | None:
+    lock = await _lock_for_resource(resource.id)
+    async with lock:
+        return await _create_block_locked(
+            session,
+            resource=resource,
+            starts_at=starts_at,
+            ends_at=ends_at,
+            owner_telegram_id=owner_telegram_id,
+            note=note,
+        )
+
+
+async def _create_block_locked(
+    session: AsyncSession,
+    *,
+    resource: Resource,
+    starts_at: datetime,
+    ends_at: datetime,
+    owner_telegram_id: int,
+    note: str,
+) -> Booking | None:
     await expire_holds(session)
     starts_at = _as_utc(starts_at)
     ends_at = _as_utc(ends_at)
     if ends_at <= starts_at:
         return None
+    await _sqlite_begin_immediate(session)
     if await has_overlap(session, resource=resource, starts_at=starts_at, ends_at=ends_at):
         return None
     booking = Booking(

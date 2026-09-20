@@ -5,7 +5,7 @@ from src.services.jobs import job_backup_sqlite, job_expire_holds, job_reminders
 
 def build_scheduler(bot, session_maker) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone="Europe/Moscow")
-    scheduler.add_job(job_expire_holds, "interval", minutes=1, args=[session_maker], id="expire_holds")
+    scheduler.add_job(job_expire_holds, "interval", minutes=1, args=[bot, session_maker], id="expire_holds")
     scheduler.add_job(
         job_reminders,
         "interval",

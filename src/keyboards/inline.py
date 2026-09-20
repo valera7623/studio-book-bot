@@ -5,6 +5,7 @@ from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.database.models.studio import Resource
+from src.services.formatters import format_day_label
 from src.services.slots import Slot, allowed_durations, quote_price_rub
 
 
@@ -55,7 +56,7 @@ def resource_keyboard(studio_id: int, resources: list[Resource]) -> InlineKeyboa
 def date_keyboard(resource_id: int, days: list[date], tz_name: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for day in days:
-        label = day.strftime("%d.%m (%a)")
+        label = format_day_label(day)
         builder.button(text=label, callback_data=f"bk:d:{resource_id}:{day.isoformat()}")
     builder.adjust(2)
     return builder.as_markup()
@@ -120,9 +121,30 @@ def pay_keyboard(url: str, booking_id: int | None = None) -> InlineKeyboardMarku
     return builder.as_markup()
 
 
-def client_booking_keyboard(booking_id: int) -> InlineKeyboardMarkup:
+def client_booking_keyboard(
+    booking_id: int,
+    *,
+    can_pay: bool = False,
+    pay_url: str | None = None,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    if pay_url:
+        builder.button(text="💳 Оплатить", url=pay_url)
+    elif can_pay:
+        builder.button(text="💳 Оплатить", callback_data=f"bk:pay:{booking_id}")
     builder.button(text="❌ Отменить бронь", callback_data=f"bk:cx:{booking_id}")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def confirm_cancel_keyboard(booking_id: int, *, owner: bool = False) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    if owner:
+        builder.button(text="✅ Да, отменить", callback_data=f"ow:cok:{booking_id}")
+        builder.button(text="↩️ Назад", callback_data="ow:book")
+    else:
+        builder.button(text="✅ Да, отменить", callback_data=f"bk:cxok:{booking_id}")
+        builder.button(text="↩️ Нет", callback_data=f"bk:cxno:{booking_id}")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -130,7 +152,7 @@ def client_booking_keyboard(booking_id: int) -> InlineKeyboardMarkup:
 def bookings_keyboard(items: list[tuple[int, str]]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for booking_id, label in items:
-        builder.button(text=f"❌ {label}", callback_data=f"ow:c:{booking_id}")
+        builder.button(text=f"Отменить {label}", callback_data=f"ow:c:{booking_id}")
     builder.button(text="↩️ Кабинет", callback_data="ow:cab")
     builder.adjust(1)
     return builder.as_markup()

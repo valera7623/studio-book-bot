@@ -61,6 +61,14 @@ def _add_missing_columns(sync_conn) -> None:
         cols = _columns(sync_conn, "payments")
         _add_column(sync_conn, "payments", cols, "refunded_at", "refunded_at DATETIME")
         _add_column(sync_conn, "payments", cols, "refund_amount_rub", "refund_amount_rub INTEGER DEFAULT 0")
+        _add_column(sync_conn, "payments", cols, "provider", "provider VARCHAR(16) DEFAULT ''")
+        _add_column(
+            sync_conn,
+            "payments",
+            cols,
+            "provider_payment_id",
+            "provider_payment_id VARCHAR(128)",
+        )
 
 
 def _rebuild_booking_active_index(sync_conn) -> None:
@@ -73,6 +81,15 @@ def _rebuild_booking_active_index(sync_conn) -> None:
             "ON bookings (resource_id, starts_at) "
             "WHERE status IN ('hold', 'paid', 'blocked')"
         )
+    )
+    sync_conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_bookings_hold_expire "
+            "ON bookings (status, hold_expires_at)"
+        )
+    )
+    sync_conn.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_bookings_status_start ON bookings (status, starts_at)")
     )
 
 

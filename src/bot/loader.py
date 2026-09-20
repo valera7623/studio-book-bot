@@ -12,9 +12,15 @@ from src.middlewares import (
 
 def get_dispatcher() -> Dispatcher:
     if settings.USE_REDIS:
-        from aiogram.fsm.storage.redis import RedisStorage
+        try:
+            from aiogram.fsm.storage.redis import RedisStorage
 
-        storage = RedisStorage.from_url(str(settings.REDIS_URL))
+            storage = RedisStorage.from_url(str(settings.REDIS_URL))
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception("Redis FSM недоступен, MemoryStorage")
+            storage = MemoryStorage()
     else:
         storage = MemoryStorage()
     return Dispatcher(storage=storage)

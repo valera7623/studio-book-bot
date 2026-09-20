@@ -176,6 +176,31 @@ def collect_order_ids(payload: dict[str, Any]) -> list[str]:
     return found
 
 
+def extract_amount_rub(payload: dict[str, Any]) -> int | None:
+    sources = [payload]
+    submit = _as_dict(payload.get("submit"))
+    if submit:
+        sources.append(submit)
+    for src in sources:
+        for key in ("sum", "order_sum", "amount"):
+            raw = src.get(key)
+            if raw is None or str(raw).strip() == "":
+                continue
+            try:
+                return int(round(float(str(raw).replace(",", "."))))
+            except (TypeError, ValueError):
+                continue
+        products = src.get("products")
+        if isinstance(products, list) and products and isinstance(products[0], dict):
+            raw = products[0].get("price")
+            if raw is not None and str(raw).strip():
+                try:
+                    return int(round(float(str(raw).replace(",", "."))))
+                except (TypeError, ValueError):
+                    continue
+    return None
+
+
 def payment_id_from_payload(payload: dict[str, Any]) -> int | None:
     sources = [payload]
     submit = _as_dict(payload.get("submit"))

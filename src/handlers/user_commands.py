@@ -40,18 +40,19 @@ async def cmd_start(
 
 
 @router.message(Command("help"))
-async def cmd_help(message: Message, user):
+async def cmd_help(message: Message, user, session: AsyncSession):
     parts = [
         "🤖 <b>Команды</b>\n",
         "/start — начало",
         "/help — эта справка",
         "/studio — кабинет владельца (создать студию, слоты, брони)",
-        "/my — мои брони (клиент: отмена)",
+        "/my — мои брони (клиент: отмена и оплата hold)",
         "/rules — шаблон правил отмены",
         "/profile — профиль Telegram",
-        "",
-        owner_cheat_sheet(),
     ]
+    studio = await get_owner_studio(session, user)
+    if studio:
+        parts.extend(["", owner_cheat_sheet()])
     if user.telegram_id in settings.admin_ids:
         parts.append("")
         parts.append("/admin — сводка платформы (саппорт)")

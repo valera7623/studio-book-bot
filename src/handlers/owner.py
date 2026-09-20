@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import time
+from datetime import datetime, time
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
@@ -15,6 +15,7 @@ from src.database.models.studio import TARIFF_PLUS, TARIFF_STARTER, Resource, St
 from src.database.models.user import User
 from src.keyboards.inline import (
     bookings_keyboard,
+    confirm_cancel_keyboard,
     grid_keyboard,
     owner_cabinet_keyboard,
     owner_resource_pick_keyboard,
@@ -24,11 +25,10 @@ from src.keyboards.inline import (
     tariff_keyboard,
 )
 from src.services import payments as payment_svc
-from src.services import prodamus
-from src.services.cancellations import cancel_booking, cancel_rules_text
+from src.services.cancellations import cancel_booking, cancel_rules_text, preview_cancel
 from src.services.formatters import format_interval_local, format_slot_local
-from src.services.ical import build_calendar
-from src.services.outreach import owner_cheat_sheet, owner_copy_pack
+from src.services.ical import build_calendar, feed_url
+from src.services.outreach import owner_cheat_sheet, owner_copy_pack, owner_next_steps
 from src.services.slots import create_block, parse_block_interval, parse_hours
 from src.services.studios import (
     get_owner_studio,
@@ -215,6 +215,7 @@ async def owner_price(
     await session.commit()
     await state.clear()
     await message.answer("Студия создана. Free: 1 зал, 30 записей в месяц.")
+    await message.answer(owner_next_steps())
     await _send_booking_link(message, bot, studio)
     await _send_outreach(message, bot, studio)
     await show_cabinet(message, session, user)
@@ -277,7 +278,7 @@ async def cb_owner_guide(callback: CallbackQuery, session: AsyncSession, user: U
 @router.callback_query(F.data == "ow:hr")
 async def cb_hours(callback: CallbackQuery, state: FSMContext):
     await state.set_state(OwnerStates.waiting_hours_edit)
-    await callback.message.answer("Новые часы, например 10:00 22:00")
+    await callback.message.answer("Новые часы для всех залов, например 10:00 22:00")
     await callback.answer()
 
 
@@ -304,7 +305,7 @@ async def owner_hours_edit(message: Message, session: AsyncSession, user: User, 
 @router.callback_query(F.data == "ow:price")
 async def cb_price(callback: CallbackQuery, state: FSMContext):
     await state.set_state(OwnerStates.waiting_price_edit)
-    await callback.message.answer("Новая цена часа в будни, рубли")
+    await callback.message.answer("Новая цена часа в будни для всех залов, рубли")
     await callback.answer()
 
 
@@ -328,7 +329,7 @@ async def owner_price_edit(message: Message, session: AsyncSession, user: User, 
         return
     await _set_all_prices(session, studio, "price_rub", int(raw))
     await state.clear()
-    await message.answer("Цена будней обновлена.")
+    await message.answer("Цена будней обновлена для всех залов.")
     await show_cabinet(message, session, user)
 
 
@@ -352,7 +353,7 @@ async def cb_grid(callback: CallbackQuery, session: AsyncSession, user: User):
 @router.callback_query(F.data == "ow:wknd")
 async def cb_weekend(callback: CallbackQuery, state: FSMContext):
     await state.set_state(OwnerStates.waiting_weekend_price)
-    await callback.message.answer("Цена часа в выходные. 0 — как в будни.")
+    await callback.message.answer("Цена часа в выходные для всех залов. 0 — как в будни.")
     await callback.answer()
 
 
@@ -368,14 +369,14 @@ async def owner_weekend_price(message: Message, session: AsyncSession, user: Use
         return
     await _set_all_prices(session, studio, "weekend_price_rub", int(raw))
     await state.clear()
-    await message.answer("Цена выходных обновлена.")
+    await message.answer("Цена выходных обновлена для всех залов.")
     await show_cabinet(message, session, user)
 
 
 @router.callback_query(F.data == "ow:night")
 async def cb_night(callback: CallbackQuery, state: FSMContext):
     await state.set_state(OwnerStates.waiting_night_price)
-    await callback.message.answer("Цена часа ночью (с 22:00). 0 — как дневная.")
+    await callback.message.answer("Цена часа ночью (с 22:00) для всех залов. 0 — как дневная.")
     await callback.answer()
 
 
@@ -391,7 +392,7 @@ async def owner_night_price(message: Message, session: AsyncSession, user: User,
         return
     await _set_all_prices(session, studio, "night_price_rub", int(raw))
     await state.clear()
-    await message.answer("Ночная цена обновлена.")
+    await message.answer("Ночная цена обновлена для всех залов.")
     await show_cabinet(message, session, user)
 
 
@@ -512,7 +513,9 @@ async def cb_block(callback: CallbackQuery, session: AsyncSession, user: User, s
     if len(resources) == 1:
         await state.update_data(block_resource_id=resources[0].id)
         await state.set_state(OwnerStates.waiting_block_interval)
-        await callback.message.answer("Интервал: 01.09.2026 14:00 16:00")
+        await callback.message.answer(
+            f"Интервал: {datetime.now().strftime('%d.%m.%Y')} 14:00 16:00"
+        )
         await callback.answer()
         return
     await callback.message.answer(
@@ -527,7 +530,9 @@ async def cb_block_resource(callback: CallbackQuery, state: FSMContext):
     resource_id = int(callback.data.split(":")[2])
     await state.update_data(block_resource_id=resource_id)
     await state.set_state(OwnerStates.waiting_block_interval)
-    await callback.message.answer("Интервал: 01.09.2026 14:00 16:00")
+    await callback.message.answer(
+        f"Интервал: {datetime.now().strftime('%d.%m.%Y')} 14:00 16:00"
+    )
     await callback.answer()
 
 
@@ -601,8 +606,8 @@ async def cb_bookings(callback: CallbackQuery, session: AsyncSession, user: User
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("ow:c:"))
-async def cb_cancel_booking(callback: CallbackQuery, session: AsyncSession, user: User, bot: Bot):
+@router.callback_query(F.data.startswith("ow:cok:"))
+async def cb_cancel_booking_ok(callback: CallbackQuery, session: AsyncSession, user: User, bot: Bot):
     studio = await get_owner_studio(session, user)
     booking_id = int(callback.data.split(":")[2])
     booking = await session.get(Booking, booking_id)
@@ -619,6 +624,19 @@ async def cb_cancel_booking(callback: CallbackQuery, session: AsyncSession, user
             )
         except Exception:
             pass
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("ow:c:"))
+async def cb_cancel_booking(callback: CallbackQuery, session: AsyncSession, user: User):
+    studio = await get_owner_studio(session, user)
+    booking_id = int(callback.data.split(":")[2])
+    booking = await session.get(Booking, booking_id)
+    if not studio or not booking or booking.studio_id != studio.id:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    _, _, text = await preview_cancel(session, booking, studio, by="owner")
+    await callback.message.answer(text, reply_markup=confirm_cancel_keyboard(booking.id, owner=True))
     await callback.answer()
 
 
@@ -643,6 +661,7 @@ async def owner_extra_resource(message: Message, session: AsyncSession, user: Us
     studio = await get_owner_studio(session, user)
     if not studio:
         await state.clear()
+        await message.answer("Студия не найдена. Сначала /studio.")
         return
     ok, reason = await can_add_resource(session, studio)
     if not ok:
@@ -672,7 +691,7 @@ async def cb_tariff(callback: CallbackQuery, session: AsyncSession, user: User):
         f"Free — 1 зал, {settings.FREE_BOOKINGS_PER_MONTH} записей/мес.\n"
         f"Старт {settings.TARIFF_STARTER_RUB} ₽ — 1 зал, без лимита записей.\n"
         f"Плюс {settings.TARIFF_PLUS_RUB} ₽ — до {settings.PLUS_RESOURCE_LIMIT} залов.\n\n"
-        "Оплата подписки — Prodamus (чек 54-ФЗ)."
+        "Оплата подписки — ЮKassa (если ключи заданы) или Prodamus."
     )
     await callback.message.answer(text, reply_markup=tariff_keyboard())
     await callback.answer()
@@ -689,20 +708,25 @@ async def cb_pay_tariff(callback: CallbackQuery, session: AsyncSession, user: Us
         tariff, amount = TARIFF_PLUS, settings.TARIFF_PLUS_RUB
     else:
         tariff, amount = TARIFF_STARTER, settings.TARIFF_STARTER_RUB
-    if not prodamus.is_configured():
+    if not payment_svc.is_pay_configured():
         await callback.message.answer(
-            "Prodamus ещё не настроен (PRODAMUS_PAYFORM_URL / SECRET в .env на VPS). "
-            "Тариф в коде заложен, оплату включим после ключей."
+            "Оплата подписки пока недоступна. Напишите в поддержку — включим кассу."
         )
         await callback.answer()
         return
     payment = await payment_svc.create_subscription_invoice(
         session, studio, tariff=tariff, amount_rub=amount
     )
-    url = payment_svc.payment_url(
-        payment,
-        description=f"Подписка studio-book {tariff} {studio.slug}",
-    )
+    try:
+        url = await payment_svc.create_checkout_url(
+            session,
+            payment,
+            description=f"Подписка studio-book {tariff} {studio.slug}",
+        )
+    except Exception:
+        await callback.message.answer("Не удалось открыть оплату. Попробуйте ещё раз чуть позже.")
+        await callback.answer()
+        return
     await callback.message.answer(
         f"Счёт на {amount} ₽. После оплаты тариф обновится автоматически.",
         reply_markup=pay_keyboard(url),
@@ -730,7 +754,7 @@ async def cb_ical(callback: CallbackQuery, session: AsyncSession, user: User):
     document = BufferedInputFile(ics.encode("utf-8"), filename=f"{studio.slug}.ics")
     caption = "Импортируйте файл в Google Calendar / отдайте агрегатору занятость."
     if settings.PUBLIC_BASE_URL.strip():
-        url = f"{settings.PUBLIC_BASE_URL.rstrip('/')}/ical/{studio.slug}.ics"
-        caption += f"\nПодписка: {url}"
+        url = feed_url(studio.slug, settings.PUBLIC_BASE_URL)
+        caption += f"\nПодписка (не публикуйте ссылку): {url}"
     await callback.message.answer_document(document, caption=caption)
     await callback.answer()

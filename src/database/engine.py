@@ -23,6 +23,8 @@ def create_async_engine(dsn: str | None = None):
         def _sqlite_pragma(dbapi_conn, _):
             cursor = dbapi_conn.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
             cursor.close()
 
     return eng

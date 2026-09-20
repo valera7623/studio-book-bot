@@ -12,6 +12,10 @@ from src.services.tariffs import can_create_booking
 from src.utils.slug import slugify
 
 
+def _future_day(days: int = 21):
+    return datetime.now(ZoneInfo("Europe/Moscow")).date() + timedelta(days=days)
+
+
 def _slot_start() -> datetime:
     return datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
 
@@ -130,7 +134,7 @@ async def test_hold_ttl_expires(session):
     session.add(booking)
     await session.commit()
     n = await expire_holds(session)
-    assert n == 1
+    assert len(n) == 1
     await session.refresh(booking)
     assert booking.status == STATUS_CANCELLED
     again = await create_hold(
@@ -165,9 +169,9 @@ async def test_generate_hourly_slots_moscow():
 
 async def test_available_slots_skip_hold(session):
     resource = await _seed_resource(session)
-    day = date(2026, 9, 2)
+    day = _future_day()
     tz = ZoneInfo("Europe/Moscow")
-    start_local = datetime(2026, 9, 2, 10, 0, tzinfo=tz)
+    start_local = datetime(day.year, day.month, day.day, 10, 0, tzinfo=tz)
     await create_hold(
         session,
         resource=resource,
@@ -298,6 +302,56 @@ def test_payment_url_has_no_query_signature(monkeypatch):
     assert "order_id=slot-1-2" in url
 
 
+def test_yookassa_payload_and_succeeded_event():
+    from src.services.yookassa import (
+        build_payment_payload,
+        extract_order_id,
+        extract_provider_payment_id,
+        is_succeeded_event,
+    )
+
+    payload = build_payment_payload(
+        order_id="slot-1-2",
+        amount_rub=490,
+        description="Старт",
+        return_url="https://studiobook.com.ru/pay/success",
+        extra={"kind": "slot_prepay"},
+    )
+    assert payload["amount"]["value"] == "490.00"
+    assert payload["capture"] is True
+    assert payload["metadata"]["order_id"] == "slot-1-2"
+    assert payload["metadata"]["kind"] == "slot_prepay"
+
+    event = {
+        "event": "payment.succeeded",
+        "object": {
+            "id": "yo-abc",
+            "status": "succeeded",
+            "metadata": {"order_id": "slot-1-2"},
+        },
+    }
+    assert is_succeeded_event(event)
+    assert extract_order_id(event) == "slot-1-2"
+    assert extract_provider_payment_id(event) == "yo-abc"
+    from src.services.yookassa import extract_amount_rub
+
+    event["object"]["amount"] = {"value": "490.00", "currency": "RUB"}
+    assert extract_amount_rub(event) == 490
+
+
+def test_active_provider_prefers_yookassa(monkeypatch):
+    from src.services import payments as payments_mod
+    from src.services import prodamus as prodamus_mod
+    from src.services import yookassa as yookassa_mod
+
+    monkeypatch.setattr(yookassa_mod, "is_configured", lambda: True)
+    monkeypatch.setattr(prodamus_mod, "is_configured", lambda: True)
+    monkeypatch.setattr(payments_mod.settings, "PAYMENT_PROVIDER", "auto")
+    assert payments_mod.active_provider() == "yookassa"
+    monkeypatch.setattr(payments_mod.settings, "PAYMENT_PROVIDER", "prodamus")
+    assert payments_mod.active_provider() == "prodamus"
+
+
 def test_slugify_russian():
     assert slugify("Циклорама Свет") == "ciklorama-svet"
 
@@ -361,8 +415,8 @@ async def test_buffer_blocks_neighbor_start(session):
     resource.work_end = time(14, 0)
     await session.commit()
     tz = ZoneInfo("Europe/Moscow")
-    day = date(2026, 9, 2)
-    start_local = datetime(2026, 9, 2, 10, 0, tzinfo=tz)
+    day = _future_day()
+    start_local = datetime(day.year, day.month, day.day, 10, 0, tzinfo=tz)
     await create_hold(
         session,
         resource=resource,
@@ -499,8 +553,8 @@ async def test_block_hides_slot(session):
 
     resource = await _seed_resource(session, slug="block-studio", telegram_id=8001)
     tz = ZoneInfo("Europe/Moscow")
-    day = date(2026, 9, 2)
-    start_local = datetime(2026, 9, 2, 10, 0, tzinfo=tz)
+    day = _future_day()
+    start_local = datetime(day.year, day.month, day.day, 10, 0, tzinfo=tz)
     block = await create_block(
         session,
         resource=resource,

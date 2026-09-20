@@ -16,11 +16,12 @@ KIND_OWNER_SUBSCRIPTION = "owner_subscription"
 PAYMENT_PENDING = "pending"
 PAYMENT_PAID = "paid"
 PAYMENT_FAILED = "failed"
+PAYMENT_REFUND_PENDING = "refund_pending"
 PAYMENT_REFUNDED = "refunded"
 
 
 class Payment(Base):
-    """Счёт Prodamus: (a) предоплата клиента за слот, (b) подписка владельца."""
+    """Счёт кассы: (a) предоплата клиента за слот, (b) подписка владельца."""
 
     __tablename__ = "payments"
 
@@ -39,6 +40,12 @@ class Payment(Base):
         String(128),
         unique=True,
         nullable=True,
+    )
+    provider: Mapped[str] = mapped_column(String(16), default="")
+    provider_payment_id: Mapped[Optional[str]] = mapped_column(
+        String(128),
+        nullable=True,
+        index=True,
     )
     amount_rub: Mapped[int] = mapped_column(Integer)
     currency: Mapped[str] = mapped_column(String(8), default="RUB")

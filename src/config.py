@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     PRODAMUS_SHOP_ID: str = ""
     PRODAMUS_PAYFORM_URL: str = ""
 
+    # ЮKassa: отдельный магазин под studiobook.com.ru, не shopId agentops/gameforge.
+    YOOKASSA_SHOP_ID: str = ""
+    YOOKASSA_SECRET_KEY: str = ""
+    # auto = ЮKassa если ключи есть, иначе Prodamus
+    PAYMENT_PROVIDER: str = "auto"
+
     HTTP_PORT: int = 8088
     PUBLIC_BASE_URL: str = ""
 

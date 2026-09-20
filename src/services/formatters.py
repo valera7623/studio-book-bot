@@ -2,9 +2,16 @@ from datetime import datetime, timezone
 from html import escape
 from zoneinfo import ZoneInfo
 
-from src.database.models.booking import Booking
+from src.database.models.booking import STATUS_HOLD, STATUS_PAID, Booking
 from src.database.models.studio import Resource, Studio
 from src.services.slots import shoot_minutes
+
+
+WEEKDAYS_RU = ("пн", "вт", "ср", "чт", "пт", "сб", "вс")
+
+
+def format_day_label(day) -> str:
+    return f"{day.strftime('%d.%m')} ({WEEKDAYS_RU[day.weekday()]})"
 
 
 def format_slot_local(starts_at: datetime, tz_name: str = "Europe/Moscow") -> str:
@@ -33,6 +40,14 @@ def booking_summary(booking: Booking, studio: Studio, resource: Resource) -> str
     if booking.quoted_price_rub:
         prepay = booking.prepay_amount_rub or booking.quoted_price_rub
         price_line = f"\n💳 {booking.quoted_price_rub} ₽, предоплата {prepay} ₽"
+    status_line = ""
+    if booking.status == STATUS_HOLD:
+        until = ""
+        if booking.hold_expires_at:
+            until = f" до {format_slot_local(booking.hold_expires_at, tz)}"
+        status_line = f"\n⏳ Не оплачено{until}"
+    elif booking.status == STATUS_PAID:
+        status_line = "\n✅ Оплачено"
     return (
         f"🏠 <b>{escape(studio.name)}</b>\n"
         f"🎬 {escape(resource.name)}\n"
@@ -40,4 +55,5 @@ def booking_summary(booking: Booking, studio: Studio, resource: Resource) -> str
         f"👤 {escape(booking.client_name)}\n"
         f"📞 {escape(booking.client_phone or '—')}"
         f"{price_line}"
+        f"{status_line}"
     )

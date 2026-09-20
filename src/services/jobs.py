@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-import shutil
+import sqlite3
 from datetime import timedelta
 from pathlib import Path
 
@@ -13,15 +13,32 @@ from src.database.models.booking import STATUS_PAID, Booking
 from src.database.models.studio import Resource, Studio
 from src.services.formatters import booking_summary
 from src.services.slots import expire_holds
+from src.utils.qr_code import studio_start_link
 
 logger = logging.getLogger(__name__)
 
 
-async def job_expire_holds(session_maker) -> None:
+async def job_expire_holds(bot, session_maker) -> None:
     async with session_maker() as session:
-        n = await expire_holds(session)
-        if n:
-            logger.info("expired holds: %s", n)
+        expired = await expire_holds(session)
+        if expired:
+            logger.info("expired holds: %s", len(expired))
+        for booking in expired:
+            studio = await session.get(Studio, booking.studio_id)
+            resource = await session.get(Resource, booking.resource_id)
+            if not studio or not resource:
+                continue
+            link = studio_start_link(studio.slug)
+            text = (
+                "⏳ Время на оплату истекло, слот снова свободен.\n"
+                + booking_summary(booking, studio, resource)
+                + f"\n\nЗаписаться снова: {link}"
+            )
+            for chat_id in (booking.client_telegram_id, studio.owner_telegram_id):
+                try:
+                    await bot.send_message(chat_id, text)
+                except Exception:
+                    logger.exception("hold expiry notify %s", chat_id)
 
 
 async def collect_due_reminders(session, now=None) -> list[tuple[Booking, str]]:
@@ -82,9 +99,16 @@ def backup_sqlite() -> Path | None:
         return None
     dest_dir = src.parent / "backups"
     dest_dir.mkdir(parents=True, exist_ok=True)
-    stamp = utcnow().strftime("%Y%m%d")
+    stamp = utcnow().strftime("%Y%m%d-%H%M")
     dest = dest_dir / f"studio_book-{stamp}.db"
-    shutil.copy2(src, dest)
+    source = sqlite3.connect(f"file:{src}?mode=ro", uri=True)
+    dest_conn = sqlite3.connect(dest)
+    try:
+        source.backup(dest_conn)
+        dest_conn.commit()
+    finally:
+        dest_conn.close()
+        source.close()
     keep = sorted(dest_dir.glob("studio_book-*.db"), reverse=True)
     for old in keep[14:]:
         old.unlink(missing_ok=True)

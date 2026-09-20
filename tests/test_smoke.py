@@ -41,6 +41,19 @@ async def test_start_answers_welcome(session):
     assert "парол" not in text.lower()
 
 
+async def test_help_hides_owner_sheet_for_clients(session):
+    from src.handlers.user_commands import cmd_help
+
+    user = User(telegram_id=2, first_name="Клиент", language_code="ru")
+    session.add(user)
+    await session.commit()
+    message = AsyncMock()
+    await cmd_help(message, user, session)
+    text = message.answer.await_args.args[0]
+    assert "/my" in text
+    assert "Шпаргалка владельца" not in text
+
+
 async def test_dispatcher_loads(engine):
     dp = get_dispatcher()
     setup_middlewares(dp, get_session_maker(engine))
@@ -102,18 +115,40 @@ async def test_landing_http_substitutes_tariffs(engine):
         pdf = await client.get("/offer.pdf")
         assert pdf.status == 200
         assert "pdf" in (pdf.headers.get("Content-Type") or "").lower()
+        ical = await client.get("/ical/missing.ics")
+        assert ical.status == 404
+        yoo = await client.post("/yookassa/webhook", json={"event": "payment.succeeded"})
+        assert yoo.status == 403
+        prod = await client.post("/prodamus/webhook", data={"order_id": "x"})
+        assert prod.status == 403
 
 
 async def test_admin_support_text_shows_payform_and_counts(session):
     from src.handlers.admin_commands import platform_support_text
 
     text = await platform_support_text(session)
-    assert "Касса Prodamus" in text
+    assert "Касса:" in text
     assert "Webhook:" in text
     assert "Платежи:" in text
     assert "Брони:" in text
     assert "Платных подписчиков:" in text
     assert "/superadmin" in text
+    assert "Пользователей:" in text
+
+
+async def test_admin_lists_user_telegram_ids(session):
+    from src.handlers.admin_commands import platform_support_text
+
+    session.add(User(telegram_id=772208133, username="me", first_name="Valera", language_code="ru"))
+    session.add(User(telegram_id=8329003097, username=None, first_name="Pyari", language_code="ru"))
+    await session.commit()
+
+    text = await platform_support_text(session)
+    assert "Пользователей: <b>2</b>" in text
+    assert "<code>772208133</code>" in text
+    assert "@me" in text
+    assert "<code>8329003097</code>" in text
+    assert "без username" in text
 
 
 async def test_superadmin_lists_paid_subscriber_ids(session):
@@ -167,6 +202,9 @@ def test_go_live_runbook_has_webhook():
     root = Path(__file__).resolve().parents[1]
     go_live = (root / "docs" / "go_live.md").read_text(encoding="utf-8")
     assert "https://studiobook.com.ru/prodamus/webhook" in go_live
+    assert "https://studiobook.com.ru/yookassa/webhook" in go_live
+    assert "data/backups/" in go_live
+    assert "studio_book.before-restore.db" in go_live
     owner = (root / "src" / "handlers" / "owner.py").read_text(encoding="utf-8")
     assert "ow:guide" in owner
     outreach = (root / "docs" / "outreach.md").read_text(encoding="utf-8")
@@ -194,6 +232,9 @@ def test_owner_cheat_sheet_covers_buttons():
     assert "Брони" in text
     assert "Закрыть интервал" in text
     assert len(text) < 3500
+    from src.services.outreach import owner_next_steps
+
+    assert "Правила" in owner_next_steps()
     markup = owner_cabinet_keyboard()
     datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
     assert "ow:guide" in datas

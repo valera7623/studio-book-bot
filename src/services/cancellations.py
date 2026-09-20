@@ -17,7 +17,7 @@ from src.database.models.payment import (
     Payment,
 )
 from src.database.models.studio import Studio
-from src.services import prodamus
+from src.services import prodamus, yookassa
 from src.services.payments import apply_refund
 
 
@@ -77,6 +77,36 @@ async def paid_slot_payment(session: AsyncSession, booking_id: int) -> Payment |
     return (await session.execute(stmt)).scalars().first()
 
 
+async def preview_cancel(
+    session: AsyncSession,
+    booking: Booking,
+    studio: Studio,
+    *,
+    by: str,
+    now: datetime | None = None,
+) -> tuple[int, str, str]:
+    """Возврат ₽, причина, текст подтверждения — без изменения брони."""
+    payment = await paid_slot_payment(session, booking.id)
+    paid_amount = payment.amount_rub if payment else int(booking.prepay_amount_rub or 0)
+    refund_rub, reason = refund_for_cancel(
+        studio, booking, paid_amount if booking.status == STATUS_PAID else 0, by=by, now=now
+    )
+    if booking.status == STATUS_HOLD:
+        text = "Слот ещё не оплачен. Отменить hold? Время сразу освободится."
+    elif refund_rub <= 0:
+        text = "Отменить бронь? Возврата не будет."
+    elif reason == "late_cancel":
+        retain = studio.late_cancel_retain_percent or 50
+        hours = studio.cancel_free_hours or 72
+        text = (
+            f"До слота меньше {hours} ч. Удержание {retain}%, "
+            f"к возврату {refund_rub} ₽. Отменить?"
+        )
+    else:
+        text = f"Отменить бронь? К возврату {refund_rub} ₽."
+    return refund_rub, reason, text
+
+
 async def cancel_booking(
     session: AsyncSession,
     booking: Booking,
@@ -101,13 +131,20 @@ async def cancel_booking(
 
     remote_note = ""
     if payment and refund_rub > 0:
-        order_id = payment.prodamus_invoice_id or ""
-        ok, detail = await prodamus.request_refund(order_id, refund_rub)
-        await apply_refund(session, payment, refund_rub, commit=False)
+        order_id = payment.provider_payment_id or payment.prodamus_invoice_id or ""
+        if payment.provider == "yookassa" or (
+            payment.provider_payment_id and yookassa.is_configured()
+        ):
+            ok, detail = await yookassa.request_refund(payment.provider_payment_id or "", refund_rub)
+            cabinet = "ЮKassa"
+        else:
+            ok, detail = await prodamus.request_refund(order_id, refund_rub)
+            cabinet = "Prodamus"
+        await apply_refund(session, payment, refund_rub, commit=False, remote_ok=ok)
         if not ok:
             remote_note = (
                 f" Кассу не удалось дернуть автоматически ({detail}). "
-                "Верните сумму в кабинете Prodamus."
+                f"Верните сумму в кабинете {cabinet}."
             )
 
     await session.commit()

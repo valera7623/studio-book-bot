@@ -4,6 +4,11 @@
 #
 # network_mode: host — polling к api.telegram.org как у хоста.
 services:
+  redis:
+    image: redis:7-alpine
+    network_mode: host
+    command: ["redis-server", "--port", "6379", "--save", "", "--appendonly", "no", "--bind", "127.0.0.1"]
+    restart: unless-stopped
   bot:
     image: ${DOCKER_IMAGE:-studio-book:local}
     build: .
@@ -12,7 +17,11 @@ services:
       - .env
     environment:
       SQLITE_PATH: /app/data/studio_book.db
+      USE_REDIS: "true"
+      REDIS_URL: redis://127.0.0.1:6379/0
     volumes:
       - ./data:/app/data
     restart: unless-stopped
     pull_policy: missing
+    depends_on:
+      - redis
