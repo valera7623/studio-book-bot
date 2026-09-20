@@ -63,6 +63,11 @@ class Settings(BaseSettings):
     HTTP_PORT: int = 8088
     PUBLIC_BASE_URL: str = ""
 
+    # HMAC iCal: не BOT_TOKEN, иначе смена токена ломает подписки календаря.
+    ICAL_FEED_SECRET: str = ""
+    # Вторая копия бэкапа SQLite (другой диск/каталог в РФ). Пусто — только data/backups/.
+    BACKUP_OFFSITE_DIR: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import shutil
 import sqlite3
 from datetime import timedelta
 from pathlib import Path
@@ -113,7 +114,25 @@ def backup_sqlite() -> Path | None:
     for old in keep[14:]:
         old.unlink(missing_ok=True)
     logger.info("sqlite backup: %s", dest)
+    _copy_backup_offsite(dest)
     return dest
+
+
+def _copy_backup_offsite(local: Path) -> None:
+    raw = (settings.BACKUP_OFFSITE_DIR or "").strip()
+    if not raw:
+        return
+    dest_dir = Path(raw)
+    try:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / local.name
+        shutil.copy2(local, dest)
+        keep = sorted(dest_dir.glob("studio_book-*.db"), reverse=True)
+        for old in keep[14:]:
+            old.unlink(missing_ok=True)
+        logger.info("sqlite offsite backup: %s", dest)
+    except OSError:
+        logger.exception("offsite backup failed dir=%s", dest_dir)
 
 
 def job_backup_sqlite() -> None:

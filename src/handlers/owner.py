@@ -26,10 +26,10 @@ from src.keyboards.inline import (
 )
 from src.services import payments as payment_svc
 from src.services.cancellations import cancel_booking, cancel_rules_text, preview_cancel
-from src.services.formatters import format_interval_local, format_slot_local
+from src.services.formatters import booking_summary, format_interval_local, format_slot_local
 from src.services.ical import build_calendar, feed_url
 from src.services.outreach import owner_cheat_sheet, owner_copy_pack, owner_next_steps
-from src.services.slots import create_block, parse_block_interval, parse_hours
+from src.services.slots import confirm_hold, create_block, parse_block_interval, parse_hours
 from src.services.studios import (
     get_owner_studio,
     get_primary_resource,
@@ -588,7 +588,7 @@ async def cb_bookings(callback: CallbackQuery, session: AsyncSession, user: User
         await callback.answer()
         return
     lines = ["📋 <b>Брони</b>\n"]
-    buttons: list[tuple[int, str]] = []
+    buttons: list[tuple[int, str, str]] = []
     for booking in rows:
         resource = await session.get(Resource, booking.resource_id)
         tz = resource.timezone if resource else studio.timezone
@@ -601,8 +601,35 @@ async def cb_bookings(callback: CallbackQuery, session: AsyncSession, user: User
         else:
             mark = "✅"
         lines.append(f"{mark} {hall} {when} — {booking.client_name} ({booking.client_phone or '—'})")
-        buttons.append((booking.id, f"{hall} {when}"))
+        buttons.append((booking.id, f"{hall} {when}", booking.status))
     await callback.message.answer("\n".join(lines), reply_markup=bookings_keyboard(buttons))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("ow:ok:"))
+async def cb_confirm_hold(callback: CallbackQuery, session: AsyncSession, user: User, bot: Bot):
+    studio = await get_owner_studio(session, user)
+    booking_id = int(callback.data.split(":")[2])
+    booking = await session.get(Booking, booking_id)
+    if not studio or not booking or booking.studio_id != studio.id:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    if not await confirm_hold(session, booking):
+        await callback.answer("Подтвердить можно только неоплаченный hold", show_alert=True)
+        return
+    resource = await session.get(Resource, booking.resource_id)
+    await callback.message.answer("Бронь подтверждена (без оплаты в боте).")
+    if booking.client_telegram_id != studio.owner_telegram_id:
+        extra = ""
+        if resource:
+            extra = "\n" + booking_summary(booking, studio, resource)
+        try:
+            await bot.send_message(
+                booking.client_telegram_id,
+                "✅ Владелец студии подтвердил вашу бронь." + extra,
+            )
+        except Exception:
+            pass
     await callback.answer()
 
 

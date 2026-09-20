@@ -12,6 +12,7 @@ ENV/
 *.db
 *.sqlite3
 data/backups/
+.ical_secret
 
 *.session
 *.session-journal

@@ -19,6 +19,7 @@ from src.keyboards.inline import (
     consent_keyboard,
     date_keyboard,
     duration_keyboard,
+    owner_hold_keyboard,
     pay_keyboard,
     resource_keyboard,
     slot_keyboard,
@@ -338,8 +339,9 @@ async def _offer_payment_or_confirm(
         return
     if not payment_svc.is_pay_configured():
         await message.answer(
-            "Предоплата ещё не подключена у студии. Слот в hold: владелец видит бронь "
-            "и подтвердит вручную.",
+            "Предоплата у студии пока не подключена. Слот удерживается: владелец "
+            "подтвердит бронь в кабинете (Брони → Подтвердить) или вы оплатите, "
+            "когда касса заработает.",
             reply_markup=client_booking_keyboard(booking.id, can_pay=True),
         )
         await _notify_owner(bot, studio, booking, resource, paid=False)
@@ -370,8 +372,11 @@ async def _offer_payment_or_confirm(
 
 async def _notify_owner(bot: Bot, studio: Studio, booking, resource: Resource, *, paid: bool) -> None:
     text = booking_summary(booking, studio, resource)
+    markup = None
+    if not paid and booking.status == STATUS_HOLD:
+        markup = owner_hold_keyboard(booking.id)
     try:
-        await bot.send_message(studio.owner_telegram_id, text)
+        await bot.send_message(studio.owner_telegram_id, text, reply_markup=markup)
     except Exception:
         pass
 

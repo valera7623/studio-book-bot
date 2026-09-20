@@ -16,6 +16,7 @@ from src.database.models.booking import (
     ACTIVE_STATUSES,
     STATUS_BLOCKED,
     STATUS_HOLD,
+    STATUS_PAID,
     Booking,
 )
 from src.database.models.studio import Resource, Studio
@@ -31,17 +32,6 @@ async def _lock_for_resource(resource_id: int) -> asyncio.Lock:
             lock = asyncio.Lock()
             _resource_locks[resource_id] = lock
         return lock
-
-
-async def _sqlite_begin_immediate(session: AsyncSession) -> None:
-    bind = session.get_bind()
-    if bind is None or bind.dialect.name != "sqlite":
-        return
-    try:
-        conn = await session.connection()
-        await conn.exec_driver_sql("BEGIN IMMEDIATE")
-    except Exception:
-        pass
 
 
 class Slot:
@@ -379,7 +369,6 @@ async def _create_hold_locked(
     await expire_holds(session)
     starts_at = _as_utc(starts_at)
     ends_at = _as_utc(ends_at)
-    await _sqlite_begin_immediate(session)
     if await has_overlap(session, resource=resource, starts_at=starts_at, ends_at=ends_at):
         return None
     if studio is None:
@@ -454,7 +443,6 @@ async def _create_block_locked(
     ends_at = _as_utc(ends_at)
     if ends_at <= starts_at:
         return None
-    await _sqlite_begin_immediate(session)
     if await has_overlap(session, resource=resource, starts_at=starts_at, ends_at=ends_at):
         return None
     booking = Booking(
@@ -486,3 +474,13 @@ async def _create_block_locked(
     except IntegrityError:
         await session.rollback()
         return None
+
+
+async def confirm_hold(session: AsyncSession, booking: Booking) -> bool:
+    """Владелец принимает hold без кассы (нал / перевод)."""
+    if booking.status != STATUS_HOLD:
+        return False
+    booking.status = STATUS_PAID
+    booking.hold_expires_at = None
+    await session.commit()
+    return True

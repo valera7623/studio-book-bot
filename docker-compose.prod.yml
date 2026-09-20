@@ -21,6 +21,8 @@ services:
       REDIS_URL: redis://127.0.0.1:6379/0
     volumes:
       - ./data:/app/data
+      # Off-site копия бэкапа (BACKUP_OFFSITE_DIR=/offsite в .env):
+      # - /mnt/studio-book-offsite:/offsite
     restart: unless-stopped
     pull_policy: missing
     depends_on:

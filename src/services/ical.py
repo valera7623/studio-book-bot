@@ -2,11 +2,15 @@
 
 import hashlib
 import hmac
+import logging
+import secrets
 from datetime import datetime, timezone
 
 from src.config import settings
 from src.database.models.booking import Booking
 from src.database.models.studio import Resource, Studio
+
+logger = logging.getLogger(__name__)
 
 
 def _fmt(dt: datetime) -> str:
@@ -23,17 +27,49 @@ def _escape(text: str) -> str:
     )
 
 
-def feed_token(slug: str) -> str:
-    secret = (settings.BOT_TOKEN or "studio-book").encode("utf-8")
+def _hmac_token(slug: str, secret: bytes) -> str:
     return hmac.new(secret, slug.encode("utf-8"), hashlib.sha256).hexdigest()[:20]
 
 
+def ical_secret_bytes() -> bytes:
+    env = (settings.ICAL_FEED_SECRET or "").strip()
+    if env:
+        return env.encode("utf-8")
+    path = settings.SQLITE_PATH.parent / ".ical_secret"
+    try:
+        if path.exists():
+            raw = path.read_text(encoding="utf-8").strip()
+            if raw:
+                return raw.encode("utf-8")
+        token = secrets.token_hex(32)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(token + "\n", encoding="utf-8")
+        try:
+            path.chmod(0o600)
+        except OSError:
+            pass
+        return token.encode("utf-8")
+    except OSError:
+        logger.exception("cannot persist ical secret at %s", path)
+        fallback = (settings.BOT_TOKEN or "studio-book").encode("utf-8")
+        return fallback
+
+
+def feed_token(slug: str) -> str:
+    return _hmac_token(slug, ical_secret_bytes())
+
+
 def feed_token_ok(slug: str, token: str) -> bool:
-    expected = feed_token(slug)
     got = (token or "").strip()
-    if len(got) != len(expected):
-        return False
-    return hmac.compare_digest(expected, got)
+    candidates = [ical_secret_bytes()]
+    bot = (settings.BOT_TOKEN or "").strip()
+    if bot:
+        candidates.append(bot.encode("utf-8"))
+    for secret in candidates:
+        expected = _hmac_token(slug, secret)
+        if len(got) == len(expected) and hmac.compare_digest(expected, got):
+            return True
+    return False
 
 
 def feed_url(slug: str, base_url: str) -> str:

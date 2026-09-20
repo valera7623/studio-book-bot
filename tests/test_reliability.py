@@ -20,7 +20,7 @@ from src.services.payments import (
     create_slot_invoice,
     find_payment_for_webhook,
 )
-from src.services.slots import create_hold, expire_holds
+from src.services.slots import confirm_hold, create_hold, expire_holds
 from tests.test_booking import _seed_resource, _slot_start
 
 
@@ -203,13 +203,6 @@ async def test_parallel_overlap_one_wins(engine):
     assert len(winners) == 1
 
 
-def test_ical_token_roundtrip():
-    token = feed_token("demo-studio")
-    assert feed_token_ok("demo-studio", token)
-    assert not feed_token_ok("demo-studio", "deadbeef")
-    assert not feed_token_ok("other", token)
-
-
 def test_booking_summary_hold_status():
     from src.database.models.studio import Studio
     from src.services.formatters import booking_summary, format_day_label
@@ -257,6 +250,7 @@ def test_backup_sqlite_valid(tmp_path, monkeypatch):
     conn.commit()
     conn.close()
     monkeypatch.setattr(settings, "SQLITE_PATH", src)
+    monkeypatch.setattr(settings, "BACKUP_OFFSITE_DIR", "")
     dest = backup_sqlite()
     assert dest is not None
     assert dest.exists()
@@ -264,3 +258,152 @@ def test_backup_sqlite_valid(tmp_path, monkeypatch):
     check = sqlite3.connect(dest)
     assert check.execute("SELECT id FROM t").fetchone()[0] == 1
     check.close()
+
+
+def _write_sqlite(path):
+    import sqlite3
+
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE t (id INTEGER)")
+    conn.execute("INSERT INTO t VALUES (1)")
+    conn.commit()
+    conn.close()
+
+
+def test_backup_sqlite_offsite_copy(tmp_path, monkeypatch):
+    from src.config import settings
+    from src.services.jobs import backup_sqlite
+
+    src = tmp_path / "studio_book.db"
+    _write_sqlite(src)
+    offsite = tmp_path / "offsite"
+    monkeypatch.setattr(settings, "SQLITE_PATH", src)
+    monkeypatch.setattr(settings, "BACKUP_OFFSITE_DIR", str(offsite))
+    dest = backup_sqlite()
+    assert dest is not None
+    copied = offsite / dest.name
+    assert copied.exists()
+    import sqlite3
+
+    check = sqlite3.connect(copied)
+    assert check.execute("SELECT id FROM t").fetchone()[0] == 1
+    check.close()
+
+
+def test_backup_sqlite_offsite_failure_keeps_local(tmp_path, monkeypatch):
+    from src.config import settings
+    from src.services.jobs import backup_sqlite
+
+    src = tmp_path / "studio_book.db"
+    _write_sqlite(src)
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    monkeypatch.setattr(settings, "SQLITE_PATH", src)
+    monkeypatch.setattr(settings, "BACKUP_OFFSITE_DIR", str(blocker))
+    dest = backup_sqlite()
+    assert dest is not None
+    assert dest.exists()
+
+
+def test_ical_token_stable_when_bot_token_rotates(monkeypatch):
+    from src.config import settings
+    from src.services.ical import feed_token, feed_token_ok
+
+    monkeypatch.setattr(settings, "ICAL_FEED_SECRET", "stable-feed-secret")
+    monkeypatch.setattr(settings, "BOT_TOKEN", "old-bot-token")
+    token = feed_token("studio-a")
+    monkeypatch.setattr(settings, "BOT_TOKEN", "new-bot-token-after-rotation")
+    assert feed_token("studio-a") == token
+    assert feed_token_ok("studio-a", token)
+
+
+def test_ical_accepts_legacy_bot_token_hmac(monkeypatch):
+    from src.config import settings
+    from src.services.ical import _hmac_token, feed_token_ok
+
+    monkeypatch.setattr(settings, "ICAL_FEED_SECRET", "new-feed-secret")
+    monkeypatch.setattr(settings, "BOT_TOKEN", "legacy-bot-token")
+    legacy = _hmac_token("studio-a", b"legacy-bot-token")
+    current = _hmac_token("studio-a", b"new-feed-secret")
+    assert feed_token_ok("studio-a", legacy)
+    assert feed_token_ok("studio-a", current)
+    assert not feed_token_ok("studio-a", _hmac_token("studio-a", b"other"))
+
+
+def test_ical_persists_secret_file(tmp_path, monkeypatch):
+    from src.config import settings
+    from src.services.ical import feed_token
+
+    monkeypatch.setattr(settings, "ICAL_FEED_SECRET", "")
+    monkeypatch.setattr(settings, "SQLITE_PATH", tmp_path / "studio_book.db")
+    monkeypatch.setattr(settings, "BOT_TOKEN", "token-1")
+    first = feed_token("s")
+    monkeypatch.setattr(settings, "BOT_TOKEN", "token-2")
+    assert feed_token("s") == first
+    secret_path = tmp_path / ".ical_secret"
+    assert secret_path.exists()
+    assert secret_path.read_text(encoding="utf-8").strip()
+
+
+def test_ical_token_roundtrip(monkeypatch, tmp_path):
+    from src.config import settings
+
+    monkeypatch.setattr(settings, "ICAL_FEED_SECRET", "test-secret")
+    monkeypatch.setattr(settings, "BOT_TOKEN", "")
+    monkeypatch.setattr(settings, "SQLITE_PATH", tmp_path / "studio_book.db")
+    token = feed_token("demo-studio")
+    assert feed_token_ok("demo-studio", token)
+    assert not feed_token_ok("demo-studio", "deadbeef")
+    assert not feed_token_ok("other", token)
+
+
+def test_owner_hold_keyboard_callback():
+    from src.keyboards.inline import bookings_keyboard, owner_hold_keyboard
+
+    markup = owner_hold_keyboard(42)
+    data = [btn.callback_data for row in markup.inline_keyboard for btn in row]
+    assert "ow:ok:42" in data
+    assert "ow:c:42" in data
+    assert not any(item.startswith("ow:cok:") for item in data)
+
+    list_markup = bookings_keyboard([(7, "Зал 12:00", "hold"), (8, "Зал 13:00", "paid")])
+    list_data = [btn.callback_data for row in list_markup.inline_keyboard for btn in row]
+    assert "ow:ok:7" in list_data
+    assert "ow:c:7" in list_data
+    assert "ow:ok:8" not in list_data
+    assert "ow:c:8" in list_data
+    labels = [btn.text for row in list_markup.inline_keyboard for btn in row]
+    assert any("Подтвердить" in text for text in labels)
+
+
+def test_sqlite_begin_immediate():
+    from src.database.engine import create_async_engine
+
+    eng = create_async_engine("sqlite+aiosqlite:///:memory:")
+    try:
+        listeners = eng.sync_engine.dispatch.begin
+        assert any(getattr(fn, "__name__", "") == "_sqlite_begin" for fn in listeners)
+    finally:
+        eng.sync_engine.dispose()
+
+
+async def test_confirm_hold_marks_paid(session):
+    resource = await _seed_resource(session, slug="confirm-hold", telegram_id=12007)
+    booking = await create_hold(
+        session,
+        resource=resource,
+        starts_at=_slot_start(),
+        ends_at=_slot_start() + timedelta(hours=1),
+        client_telegram_id=9,
+        client_name="Клиент",
+        client_phone=None,
+        client_user_id=None,
+    )
+    assert booking.status == STATUS_HOLD
+    assert booking.hold_expires_at is not None
+    assert await confirm_hold(session, booking)
+    await session.refresh(booking)
+    assert booking.status == STATUS_PAID
+    assert booking.hold_expires_at is None
+    assert not await confirm_hold(session, booking)
+

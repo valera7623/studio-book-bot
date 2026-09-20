@@ -92,9 +92,30 @@ cp data/backups/studio_book-YYYYMMDD-HHMM.db data/studio_book.db
 docker compose -f docker-compose.prod.yml start bot
 ```
 
-Проверка: `/admin` открывается, список броней в `/studio` на месте. Off-site копию `data/backups/` держать на другом диске/VPS в РФ (не Cloud Supabase).
+Проверка: `/admin` открывается, список броней в `/studio` на месте.
 
-## 4. Дальше не код
+Off-site: в `.env` задайте каталог на **другом диске** (не тот же `data/`):
+
+```
+BACKUP_OFFSITE_DIR=/offsite
+```
+
+В `docker-compose.prod.yml` раскомментируйте том `/mnt/studio-book-offsite:/offsite`. Планировщик после локальной копии делает `copy2` туда (те же 14 файлов). Если каталог недоступен — локальный бэкап всё равно пишется, ошибка в логе.
+
+Разовая проверка:
+
+```
+docker compose -f docker-compose.prod.yml exec bot python scripts/backup_sqlite.py
+ls -lt /mnt/studio-book-offsite | head
+```
+
+Не Cloud Supabase и не зарубежный S3: ПДн только в РФ.
+
+## 4. iCal после смены BOT_TOKEN
+
+Подпись ленты — `ICAL_FEED_SECRET` (или файл `data/.ical_secret`), не токен бота. После ротации BotFather старые URL подписки продолжают открываться (принимается и HMAC от прежнего `BOT_TOKEN`). Новый URL в `/studio` → «iCal». Чтобы отозвать старые ссылки — смените `ICAL_FEED_SECRET` и заново отправьте ленту владельцу.
+
+## 5. Дальше не код
 
 8–10 разговоров: [pain_check.md](pain_check.md). Воронку вести вне репозитория.
 

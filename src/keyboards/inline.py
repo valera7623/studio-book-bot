@@ -149,10 +149,21 @@ def confirm_cancel_keyboard(booking_id: int, *, owner: bool = False) -> InlineKe
     return builder.as_markup()
 
 
-def bookings_keyboard(items: list[tuple[int, str]]) -> InlineKeyboardMarkup:
+def owner_hold_keyboard(booking_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for booking_id, label in items:
-        builder.button(text=f"Отменить {label}", callback_data=f"ow:c:{booking_id}")
+    builder.button(text="✅ Подтвердить бронь", callback_data=f"ow:ok:{booking_id}")
+    builder.button(text="❌ Отменить", callback_data=f"ow:c:{booking_id}")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def bookings_keyboard(items: list[tuple[int, str, str]]) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for booking_id, label, status in items:
+        short = label[:24]
+        if status == "hold":
+            builder.button(text=f"Подтвердить {short}", callback_data=f"ow:ok:{booking_id}")
+        builder.button(text=f"Отменить {short}", callback_data=f"ow:c:{booking_id}")
     builder.button(text="↩️ Кабинет", callback_data="ow:cab")
     builder.adjust(1)
     return builder.as_markup()
