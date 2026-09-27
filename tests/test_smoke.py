@@ -121,6 +121,12 @@ async def test_landing_http_substitutes_tariffs(engine):
         assert yoo.status == 403
         prod = await client.post("/prodamus/webhook", data={"order_id": "x"})
         assert prod.status == 403
+        pay = await client.get("/pay/success")
+        assert pay.status == 200
+        pay_text = await pay.text()
+        assert "Статус брони" in pay_text
+        assert "Вернитесь" not in pay_text
+        assert "Telegram" not in pay_text
 
 
 async def test_admin_support_text_shows_payform_and_counts(session):

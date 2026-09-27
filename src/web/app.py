@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from html import escape
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -11,8 +12,10 @@ from sqlalchemy import select
 
 from src.config import PROJECT_ROOT, settings
 from src.database.models.booking import STATUS_BLOCKED, STATUS_PAID, Booking
-from src.database.models.payment import PAYMENT_REFUND_PENDING, PAYMENT_REFUNDED
+from src.database.models.payment import PAYMENT_REFUND_PENDING, PAYMENT_REFUNDED, Payment
+from src.database.models.studio import Resource, Studio
 from src.services import prodamus, yookassa
+from src.services.formatters import booking_summary, cashier_return_url, pay_result_copy
 from src.services.ical import build_calendar, feed_token_ok
 from src.services.payments import (
     amount_matches,
@@ -91,10 +94,95 @@ async def offer_pdf(_request: web.Request) -> web.StreamResponse:
     return web.FileResponse(path, headers={"Content-Type": "application/pdf"})
 
 
-async def pay_stub(request: web.Request) -> web.Response:
+def _pay_result_html(
+    *,
+    title: str,
+    status: str,
+    extra: str = "",
+    refresh_url: str | None = None,
+) -> str:
+    refresh = ""
+    if refresh_url:
+        refresh = f'<meta http-equiv="refresh" content="4;url={escape(refresh_url, quote=True)}">'
+    extra_block = ""
+    if extra:
+        extra_block = f'<div class="extra">{extra}</div>'
+    return f"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {refresh}
+  <title>{escape(title)}</title>
+  <style>
+    body {{
+      margin: 0;
+      padding: 32px 20px;
+      font-family: system-ui, sans-serif;
+      background: #120c16;
+      color: #f6efe4;
+      line-height: 1.5;
+    }}
+    .card {{
+      max-width: 28rem;
+      margin: 0 auto;
+      padding: 24px;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 214, 170, 0.18);
+      background: rgba(22, 16, 14, 0.85);
+    }}
+    h1 {{ font-size: 1.35rem; margin: 0 0 12px; }}
+    .status {{ color: #f0b45a; font-size: 1.05rem; }}
+    .extra {{ white-space: pre-wrap; margin-top: 16px; color: #c4b8a8; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>{escape(title)}</h1>
+    <p class="status">{escape(status)}</p>
+    {extra_block}
+  </div>
+</body>
+</html>"""
+
+
+async def pay_result(request: web.Request) -> web.Response:
+    order = str(request.query.get("order") or "").strip()
+    already_waited = str(request.query.get("wait") or "") == "1"
+    payment = None
+    booking = None
+    extra = ""
+    session_maker = request.app.get("session_maker")
+    if order and session_maker is not None:
+        async with session_maker() as session:
+            payment = (
+                await session.execute(
+                    select(Payment).where(Payment.prodamus_invoice_id == order)
+                )
+            ).scalar_one_or_none()
+            if payment is None and order.isdigit():
+                payment = await session.get(Payment, int(order))
+            if payment and payment.booking_id:
+                booking = await session.get(Booking, payment.booking_id)
+            title, status, waiting = pay_result_copy(payment, booking)
+            if booking:
+                studio = await session.get(Studio, booking.studio_id)
+                resource = await session.get(Resource, booking.resource_id)
+                if studio and resource:
+                    extra = booking_summary(booking, studio, resource)
+    else:
+        title, status, waiting = pay_result_copy(None, None)
+    refresh_url = None
+    if waiting and order and not already_waited:
+        refresh_url = cashier_return_url(order) + "&wait=1"
     return web.Response(
-        text="Оплата принята платёжной системой. Вернитесь в Telegram — бронь подтвердится автоматически.",
-        content_type="text/plain",
+        text=_pay_result_html(
+            title=title,
+            status=status,
+            extra=extra,
+            refresh_url=refresh_url,
+        ),
+        content_type="text/html",
         charset="utf-8",
     )
 
@@ -305,8 +393,8 @@ def create_web_app(bot, session_maker) -> web.Application:
     app.router.add_get("/offer", offer_page)
     app.router.add_get("/offer/", offer_page)
     app.router.add_get("/offer.pdf", offer_pdf)
-    app.router.add_get("/pay/success", pay_stub)
-    app.router.add_get("/pay/return", pay_stub)
+    app.router.add_get("/pay/success", pay_result)
+    app.router.add_get("/pay/return", pay_result)
     app.router.add_get("/ical/{slug}/{token}.ics", ical_feed)
     app.router.add_post("/prodamus/webhook", prodamus_webhook)
     app.router.add_post("/yookassa/webhook", yookassa_webhook)

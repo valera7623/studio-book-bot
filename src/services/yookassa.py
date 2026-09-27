@@ -9,6 +9,7 @@ from typing import Any
 import aiohttp
 
 from src.config import settings
+from src.services.formatters import cashier_return_url
 
 logger = logging.getLogger(__name__)
 
@@ -84,8 +85,7 @@ async def create_payment(
 ) -> tuple[str, str]:
     if not is_configured():
         raise RuntimeError("YooKassa is not configured")
-    root = settings.PUBLIC_BASE_URL.rstrip("/") if settings.PUBLIC_BASE_URL.strip() else ""
-    return_url = (root + "/pay/success") if root else "https://studiobook.com.ru/pay/success"
+    return_url = cashier_return_url(order_id)
     payload = build_payment_payload(
         order_id=order_id,
         amount_rub=amount_rub,

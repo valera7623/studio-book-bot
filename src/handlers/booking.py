@@ -26,11 +26,10 @@ from src.keyboards.inline import (
 from src.services import payments as payment_svc
 from src.services.cancellations import cancel_booking, cancel_rules_text, preview_cancel
 from src.services.consents import consent_text, record_consent
-from src.services.formatters import booking_summary, format_interval_local
+from src.services.formatters import booking_summary, format_interval_local, hold_minutes_left
 from src.services.slots import (
     allowed_durations,
     available_slots,
-    clamp_hold_ttl,
     create_hold,
     generate_slots_for_day,
     open_days_ahead,
@@ -313,9 +312,8 @@ async def cb_consent(
         )
         await callback.answer()
         return
-    ttl = clamp_hold_ttl(studio.hold_ttl_minutes)
     summary = booking_summary(booking, studio, resource)
-    await callback.message.answer(f"⏳ Слот удерживается {ttl} мин.\n\n{summary}")
+    await callback.message.answer(summary)
     await _offer_payment_or_confirm(callback.message, session, bot, booking, studio, resource)
     await callback.answer()
 
@@ -341,10 +339,12 @@ async def _offer_payment_or_confirm(
         await _notify_owner(bot, studio, booking, resource, paid=True)
         return
     if not payment_svc.is_pay_configured():
+        left = hold_minutes_left(booking)
+        left_bit = f" Осталось {left} мин на оплату." if left and left > 0 else ""
         await message.answer(
             "Предоплата у студии пока не подключена. Слот удерживается: владелец "
             "подтвердит бронь в кабинете (Брони → Подтвердить) или вы оплатите, "
-            "когда касса заработает.",
+            f"когда касса заработает.{left_bit}",
             reply_markup=client_booking_keyboard(booking.id, can_pay=True),
         )
         await _notify_owner(bot, studio, booking, resource, paid=False)
@@ -365,8 +365,13 @@ async def _offer_payment_or_confirm(
         await _notify_owner(bot, studio, booking, resource, paid=False)
         return
     pct = studio.prepay_percent or 100
+    left = hold_minutes_left(booking)
+    left_bit = ""
+    if left is not None and left > 0:
+        left_bit = f" Осталось {left} мин на оплату."
     await message.answer(
-        f"К оплате {prepay} ₽ ({pct}% от {price} ₽). После оплаты бронь подтвердится автоматически.\n"
+        f"К оплате {prepay} ₽ ({pct}% от {price} ₽).{left_bit}\n"
+        "После оплаты статус брони станет «оплачено». "
         "Чек — в «Мой налог» / кассе, которой идёт платёж.",
         reply_markup=pay_keyboard(url, booking.id),
     )

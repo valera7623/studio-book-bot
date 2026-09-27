@@ -343,6 +343,7 @@ def test_payment_url_has_no_query_signature(monkeypatch):
     assert "products[0][price]=100" in url
     assert "customer_phone=79991234567" in url
     assert "urlSuccess=" in url
+    assert "pay%2Fsuccess%3Forder%3Dslot-1-2" in url
     assert "products[0][sku]=slot-1-2" in url
     assert "order_id=slot-1-2" in url
 
@@ -359,9 +360,10 @@ def test_yookassa_payload_and_succeeded_event():
         order_id="slot-1-2",
         amount_rub=490,
         description="Старт",
-        return_url="https://studiobook.com.ru/pay/success",
+        return_url="https://studiobook.com.ru/pay/success?order=slot-1-2",
         extra={"kind": "slot_prepay"},
     )
+    assert payload["confirmation"]["return_url"].endswith("order=slot-1-2")
     assert payload["amount"]["value"] == "490.00"
     assert payload["capture"] is True
     assert payload["metadata"]["order_id"] == "slot-1-2"
@@ -669,3 +671,107 @@ async def test_refund_webhook_idempotent(session):
     assert second.id == first.id
     again = await apply_paid_order(session, payment.prodamus_invoice_id)
     assert again.status == PAYMENT_REFUNDED
+
+
+def test_pay_result_copy_and_return_url():
+    from src.database.models.payment import (
+        KIND_OWNER_SUBSCRIPTION,
+        KIND_SLOT_PREPAY,
+        PAYMENT_PAID,
+        PAYMENT_PENDING,
+        Payment,
+    )
+    from src.services.formatters import cashier_return_url, pay_result_copy
+
+    now = datetime(2026, 9, 27, 12, 0, tzinfo=timezone.utc)
+    booking = Booking(
+        resource_id=1,
+        studio_id=1,
+        client_telegram_id=1,
+        client_name="Анна",
+        starts_at=now + timedelta(days=1),
+        ends_at=now + timedelta(days=1, hours=1),
+        status=STATUS_HOLD,
+        hold_expires_at=now + timedelta(minutes=20),
+    )
+    payment = Payment(
+        kind=KIND_SLOT_PREPAY,
+        amount_rub=1000,
+        status=PAYMENT_PENDING,
+        prodamus_invoice_id="slot-9-9",
+    )
+    title, status, waiting = pay_result_copy(payment, booking, now=now)
+    assert title == "Бронь ещё не подтверждена"
+    assert "осталось 20 мин на оплату" in status
+    assert waiting is True
+
+    booking.status = STATUS_PAID
+    payment.status = PAYMENT_PAID
+    title, status, waiting = pay_result_copy(payment, booking, now=now)
+    assert title == "Бронь подтверждена"
+    assert status == "Статус: оплачено"
+    assert waiting is False
+
+    booking.status = STATUS_CANCELLED
+    title, status, _ = pay_result_copy(payment, booking, now=now)
+    assert title == "Бронь не подтверждена"
+    assert status == "Статус: отменена"
+
+    sub = Payment(kind=KIND_OWNER_SUBSCRIPTION, amount_rub=490, status=PAYMENT_PAID)
+    title, status, waiting = pay_result_copy(sub, None)
+    assert title == "Подписка оплачена"
+    assert status == "Статус: оплачено"
+    assert waiting is False
+
+    title, status, waiting = pay_result_copy(None, None)
+    assert title == "Платёж не найден"
+    assert "неизвестен" in status
+    assert waiting is False
+
+    url = cashier_return_url("slot-9-9")
+    assert url.endswith("/pay/success?order=slot-9-9")
+    assert "Telegram" not in url
+
+
+async def test_pay_success_page_shows_paid_booking(engine, session):
+    from aiohttp.test_utils import TestClient, TestServer
+
+    from src.database import get_session_maker
+    from src.database.models.payment import KIND_SLOT_PREPAY, PAYMENT_PAID, Payment
+    from src.web.app import create_web_app
+
+    resource = await _seed_resource(session, slug="pay-page", telegram_id=14001)
+    booking = await create_hold(
+        session,
+        resource=resource,
+        starts_at=_slot_start() + timedelta(days=40),
+        ends_at=_slot_start() + timedelta(days=40, hours=1),
+        client_telegram_id=9,
+        client_name="Клиент",
+        client_phone=None,
+        client_user_id=None,
+    )
+    booking.status = STATUS_PAID
+    booking.hold_expires_at = None
+    payment = Payment(
+        kind=KIND_SLOT_PREPAY,
+        booking_id=booking.id,
+        studio_id=booking.studio_id,
+        amount_rub=1000,
+        status=PAYMENT_PAID,
+        prodamus_invoice_id=f"slot-{booking.id}-page",
+    )
+    session.add(payment)
+    await session.commit()
+
+    app = create_web_app(bot=None, session_maker=get_session_maker(engine))
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get(f"/pay/success?order={payment.prodamus_invoice_id}")
+        assert resp.status == 200
+        text = await resp.text()
+        assert "Бронь подтверждена" in text
+        assert "Статус: оплачено" in text
+        assert "Вернитесь" not in text
+        assert "Telegram" not in text
+        assert "html" in (resp.headers.get("Content-Type") or "").lower()
+

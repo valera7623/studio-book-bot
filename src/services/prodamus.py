@@ -11,6 +11,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlencode
 
 from src.config import settings
+from src.services.formatters import cashier_return_url
 
 logger = logging.getLogger(__name__)
 
@@ -245,9 +246,8 @@ def build_payment_url(
     if len(digits) == 11 and digits.startswith("7"):
         flat["customer_phone"] = digits
     if settings.PUBLIC_BASE_URL.strip():
-        root = settings.PUBLIC_BASE_URL.rstrip("/")
-        flat["urlSuccess"] = root + "/pay/success"
-        flat["urlReturn"] = root + "/pay/return"
+        flat["urlSuccess"] = cashier_return_url(order_id)
+        flat["urlReturn"] = cashier_return_url(order_id)
     return f"{base}?{urlencode(flat, safe='[]')}"
 
 

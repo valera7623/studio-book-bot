@@ -275,12 +275,13 @@ async def test_parallel_overlap_one_wins(engine):
 
 def test_booking_summary_hold_status():
     from src.database.models.studio import Studio
-    from src.services.formatters import booking_summary, format_day_label
+    from src.services.formatters import booking_summary, format_day_label, hold_minutes_left
 
     day = date(2026, 9, 21)
     assert "пн" in format_day_label(day)
     studio = Studio(slug="x", name="Студия", owner_id=1, owner_telegram_id=1)
     resource = Resource(studio_id=1, name="Зал", timezone="Europe/Moscow")
+    now = datetime(2026, 10, 1, 10, 47, tzinfo=timezone.utc)
     booking = Booking(
         resource_id=1,
         studio_id=1,
@@ -294,8 +295,9 @@ def test_booking_summary_hold_status():
         quoted_price_rub=1000,
         prepay_amount_rub=1000,
     )
-    text = booking_summary(booking, studio, resource)
-    assert "Не оплачено" in text
+    assert hold_minutes_left(booking, now) == 13
+    text = booking_summary(booking, studio, resource, now=now)
+    assert "Осталось 13 мин на оплату" in text
     booking.status = STATUS_PAID
     assert "Оплачено" in booking_summary(booking, studio, resource)
 
