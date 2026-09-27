@@ -194,23 +194,42 @@ def rules_keyboard(studio) -> InlineKeyboardMarkup:
 
 
 def slot_settings_keyboard(resource: Resource) -> InlineKeyboardMarkup:
+    rid = resource.id
     builder = InlineKeyboardBuilder()
-    builder.button(text=("· " if resource.slot_step_min == 30 else "") + "шаг 30 мин", callback_data="ow:step:30")
-    builder.button(text=("· " if resource.slot_step_min == 60 else "") + "шаг 60 мин", callback_data="ow:step:60")
-    builder.button(text=("· " if resource.min_duration_min == 60 else "") + "мин. 1 ч", callback_data="ow:mind:60")
-    builder.button(text=("· " if resource.min_duration_min == 120 else "") + "мин. 2 ч", callback_data="ow:mind:120")
-    builder.button(text=("· " if resource.buffer_min == 5 else "") + "буфер 5", callback_data="ow:buf:5")
-    builder.button(text=("· " if resource.buffer_min == 10 else "") + "буфер 10", callback_data="ow:buf:10")
+    builder.button(
+        text=("· " if resource.slot_step_min == 30 else "") + "шаг 30 мин",
+        callback_data=f"ow:step:{rid}:30",
+    )
+    builder.button(
+        text=("· " if resource.slot_step_min == 60 else "") + "шаг 60 мин",
+        callback_data=f"ow:step:{rid}:60",
+    )
+    builder.button(
+        text=("· " if resource.min_duration_min == 60 else "") + "мин. 1 ч",
+        callback_data=f"ow:mind:{rid}:60",
+    )
+    builder.button(
+        text=("· " if resource.min_duration_min == 120 else "") + "мин. 2 ч",
+        callback_data=f"ow:mind:{rid}:120",
+    )
+    builder.button(
+        text=("· " if resource.buffer_min == 5 else "") + "буфер 5",
+        callback_data=f"ow:buf:{rid}:5",
+    )
+    builder.button(
+        text=("· " if resource.buffer_min == 10 else "") + "буфер 10",
+        callback_data=f"ow:buf:{rid}:10",
+    )
     builder.button(text="↩️ Кабинет", callback_data="ow:cab")
     builder.adjust(2)
     return builder.as_markup()
 
 
-def grid_keyboard() -> InlineKeyboardMarkup:
+def grid_keyboard(resource_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.button(text="Будни (база)", callback_data="ow:price")
-    builder.button(text="Выходные", callback_data="ow:wknd")
-    builder.button(text="Ночь с 22:00", callback_data="ow:night")
+    builder.button(text="Будни (база)", callback_data=f"ow:prp:{resource_id}")
+    builder.button(text="Выходные", callback_data=f"ow:wknd:{resource_id}")
+    builder.button(text="Ночь с 22:00", callback_data=f"ow:night:{resource_id}")
     builder.button(text="↩️ Кабинет", callback_data="ow:cab")
     builder.adjust(1)
     return builder.as_markup()

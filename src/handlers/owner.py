@@ -77,6 +77,45 @@ def _copy_slot_fields(primary: Resource | None) -> dict:
     }
 
 
+def _hall_label(resource: Resource) -> str:
+    return f"«{resource.name}»"
+
+
+async def _owned_resource(
+    session: AsyncSession, user: User, resource_id: int | None
+) -> Resource | None:
+    if not resource_id:
+        return None
+    studio = await get_owner_studio(session, user)
+    if not studio:
+        return None
+    resource = await session.get(Resource, resource_id)
+    if not resource or resource.studio_id != studio.id or not resource.is_active:
+        return None
+    return resource
+
+
+async def _begin_resource_edit(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    user: User,
+    prefix: str,
+) -> Resource | None:
+    studio = await get_owner_studio(session, user)
+    resources = await list_active_resources(session, studio.id) if studio else []
+    if not resources:
+        await callback.answer("Нет зала", show_alert=True)
+        return None
+    if len(resources) == 1:
+        return resources[0]
+    await callback.message.answer(
+        "Какой зал?",
+        reply_markup=owner_resource_pick_keyboard(resources, prefix),
+    )
+    await callback.answer()
+    return None
+
+
 async def show_cabinet(message: Message, session: AsyncSession, user: User) -> None:
     studio = await get_owner_studio(session, user)
     if studio is None:
@@ -275,11 +314,71 @@ async def cb_owner_guide(callback: CallbackQuery, session: AsyncSession, user: U
     await callback.answer()
 
 
-@router.callback_query(F.data == "ow:hr")
-async def cb_hours(callback: CallbackQuery, state: FSMContext):
+async def _ask_hours(callback: CallbackQuery, state: FSMContext, resource: Resource) -> None:
+    await state.update_data(edit_resource_id=resource.id)
     await state.set_state(OwnerStates.waiting_hours_edit)
-    await callback.message.answer("Новые часы для всех залов, например 10:00 22:00")
+    await callback.message.answer(
+        f"Новые часы для {_hall_label(resource)}, например 10:00 22:00"
+    )
     await callback.answer()
+
+
+async def _ask_price(
+    callback: CallbackQuery,
+    state: FSMContext,
+    resource: Resource,
+    fsm_state,
+    prompt: str,
+) -> None:
+    await state.update_data(edit_resource_id=resource.id)
+    await state.set_state(fsm_state)
+    await callback.message.answer(prompt)
+    await callback.answer()
+
+
+async def _show_grid(callback: CallbackQuery, resource: Resource) -> None:
+    text = (
+        f"Сетка для {_hall_label(resource)}: будни / выходные / ночь (с 22:00). 0 — как будни.\n"
+        f"Будни: {resource.price_rub} ₽\n"
+        f"Выходные: {resource.weekend_price_rub or 'как будни'}\n"
+        f"Ночь: {resource.night_price_rub or 'как будни'}"
+    )
+    await callback.message.answer(text, reply_markup=grid_keyboard(resource.id))
+    await callback.answer()
+
+
+async def _show_slots(callback: CallbackQuery, resource: Resource) -> None:
+    text = (
+        f"{_hall_label(resource)}: шаг {resource.slot_step_min} мин, "
+        f"минимум {resource.min_duration_min} мин, буфер {resource.buffer_min} мин. "
+        f"Наценка за 1 ч при минимуме 2 ч — {resource.hour_markup_percent}%."
+    )
+    await callback.message.answer(text, reply_markup=slot_settings_keyboard(resource))
+    await callback.answer()
+
+
+async def _edit_resource_from_state(
+    session: AsyncSession, user: User, state: FSMContext
+) -> Resource | None:
+    data = await state.get_data()
+    return await _owned_resource(session, user, data.get("edit_resource_id"))
+
+
+@router.callback_query(F.data == "ow:hr")
+async def cb_hours(callback: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    resource = await _begin_resource_edit(callback, session, user, "ow:hrp")
+    if resource is None:
+        return
+    await _ask_hours(callback, state, resource)
+
+
+@router.callback_query(F.data.startswith("ow:hrp:"))
+async def cb_hours_pick(callback: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    resource = await _owned_resource(session, user, int(callback.data.split(":")[2]))
+    if not resource:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    await _ask_hours(callback, state, resource)
 
 
 @router.message(OwnerStates.waiting_hours_edit, _NOT_COMMAND)
@@ -288,32 +387,45 @@ async def owner_hours_edit(message: Message, session: AsyncSession, user: User, 
     if parsed is None:
         await message.answer("Формат: 10:00 22:00")
         return
-    studio = await get_owner_studio(session, user)
-    resources = await list_active_resources(session, studio.id) if studio else []
-    if not resources:
-        await message.answer("Ресурс не найден.")
+    resource = await _edit_resource_from_state(session, user, state)
+    if not resource:
+        await message.answer("Зал не найден.")
         await state.clear()
         return
-    for resource in resources:
-        resource.work_start, resource.work_end = parsed
+    resource.work_start, resource.work_end = parsed
     await session.commit()
     await state.clear()
-    await message.answer("Часы обновлены для всех залов.")
+    await message.answer("Часы обновлены.")
     await show_cabinet(message, session, user)
 
 
 @router.callback_query(F.data == "ow:price")
-async def cb_price(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(OwnerStates.waiting_price_edit)
-    await callback.message.answer("Новая цена часа в будни для всех залов, рубли")
-    await callback.answer()
+async def cb_price(callback: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    resource = await _begin_resource_edit(callback, session, user, "ow:prp")
+    if resource is None:
+        return
+    await _ask_price(
+        callback,
+        state,
+        resource,
+        OwnerStates.waiting_price_edit,
+        f"Новая цена часа в будни для {_hall_label(resource)}, рубли",
+    )
 
 
-async def _set_all_prices(session, studio: Studio, field: str, value: int) -> None:
-    resources = await list_active_resources(session, studio.id)
-    for resource in resources:
-        setattr(resource, field, value)
-    await session.commit()
+@router.callback_query(F.data.startswith("ow:prp:"))
+async def cb_price_pick(callback: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    resource = await _owned_resource(session, user, int(callback.data.split(":")[2]))
+    if not resource:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    await _ask_price(
+        callback,
+        state,
+        resource,
+        OwnerStates.waiting_price_edit,
+        f"Новая цена часа в будни для {_hall_label(resource)}, рубли",
+    )
 
 
 @router.message(OwnerStates.waiting_price_edit, _NOT_COMMAND)
@@ -322,39 +434,48 @@ async def owner_price_edit(message: Message, session: AsyncSession, user: User, 
     if not raw.isdigit():
         await message.answer("Введите число.")
         return
-    studio = await get_owner_studio(session, user)
-    if not studio:
-        await message.answer("Студия не найдена.")
+    resource = await _edit_resource_from_state(session, user, state)
+    if not resource:
+        await message.answer("Зал не найден.")
         await state.clear()
         return
-    await _set_all_prices(session, studio, "price_rub", int(raw))
+    resource.price_rub = int(raw)
+    await session.commit()
     await state.clear()
-    await message.answer("Цена будней обновлена для всех залов.")
+    await message.answer("Цена будней обновлена.")
     await show_cabinet(message, session, user)
 
 
 @router.callback_query(F.data == "ow:grid")
 async def cb_grid(callback: CallbackQuery, session: AsyncSession, user: User):
-    studio = await get_owner_studio(session, user)
-    resource = await get_primary_resource(session, studio.id) if studio else None
-    if not resource:
-        await callback.answer("Нет зала", show_alert=True)
+    resource = await _begin_resource_edit(callback, session, user, "ow:grp")
+    if resource is None:
         return
-    text = (
-        "Сетка: будни / выходные / ночь (с 22:00). 0 — как будни.\n"
-        f"Будни: {resource.price_rub} ₽\n"
-        f"Выходные: {resource.weekend_price_rub or 'как будни'}\n"
-        f"Ночь: {resource.night_price_rub or 'как будни'}"
+    await _show_grid(callback, resource)
+
+
+@router.callback_query(F.data.startswith("ow:grp:"))
+async def cb_grid_pick(callback: CallbackQuery, session: AsyncSession, user: User):
+    resource = await _owned_resource(session, user, int(callback.data.split(":")[2]))
+    if not resource:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    await _show_grid(callback, resource)
+
+
+@router.callback_query(F.data.startswith("ow:wknd:"))
+async def cb_weekend(callback: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    resource = await _owned_resource(session, user, int(callback.data.split(":")[2]))
+    if not resource:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    await _ask_price(
+        callback,
+        state,
+        resource,
+        OwnerStates.waiting_weekend_price,
+        f"Цена часа в выходные для {_hall_label(resource)}. 0 — как в будни.",
     )
-    await callback.message.answer(text, reply_markup=grid_keyboard())
-    await callback.answer()
-
-
-@router.callback_query(F.data == "ow:wknd")
-async def cb_weekend(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(OwnerStates.waiting_weekend_price)
-    await callback.message.answer("Цена часа в выходные для всех залов. 0 — как в будни.")
-    await callback.answer()
 
 
 @router.message(OwnerStates.waiting_weekend_price, _NOT_COMMAND)
@@ -363,21 +484,31 @@ async def owner_weekend_price(message: Message, session: AsyncSession, user: Use
     if not raw.isdigit():
         await message.answer("Введите число.")
         return
-    studio = await get_owner_studio(session, user)
-    if not studio:
+    resource = await _edit_resource_from_state(session, user, state)
+    if not resource:
+        await message.answer("Зал не найден.")
         await state.clear()
         return
-    await _set_all_prices(session, studio, "weekend_price_rub", int(raw))
+    resource.weekend_price_rub = int(raw)
+    await session.commit()
     await state.clear()
-    await message.answer("Цена выходных обновлена для всех залов.")
+    await message.answer("Цена выходных обновлена.")
     await show_cabinet(message, session, user)
 
 
-@router.callback_query(F.data == "ow:night")
-async def cb_night(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(OwnerStates.waiting_night_price)
-    await callback.message.answer("Цена часа ночью (с 22:00) для всех залов. 0 — как дневная.")
-    await callback.answer()
+@router.callback_query(F.data.startswith("ow:night:"))
+async def cb_night(callback: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    resource = await _owned_resource(session, user, int(callback.data.split(":")[2]))
+    if not resource:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    await _ask_price(
+        callback,
+        state,
+        resource,
+        OwnerStates.waiting_night_price,
+        f"Цена часа ночью (с 22:00) для {_hall_label(resource)}. 0 — как дневная.",
+    )
 
 
 @router.message(OwnerStates.waiting_night_price, _NOT_COMMAND)
@@ -386,13 +517,15 @@ async def owner_night_price(message: Message, session: AsyncSession, user: User,
     if not raw.isdigit():
         await message.answer("Введите число.")
         return
-    studio = await get_owner_studio(session, user)
-    if not studio:
+    resource = await _edit_resource_from_state(session, user, state)
+    if not resource:
+        await message.answer("Зал не найден.")
         await state.clear()
         return
-    await _set_all_prices(session, studio, "night_price_rub", int(raw))
+    resource.night_price_rub = int(raw)
+    await session.commit()
     await state.clear()
-    await message.answer("Ночная цена обновлена для всех залов.")
+    await message.answer("Ночная цена обновлена.")
     await show_cabinet(message, session, user)
 
 
@@ -451,37 +584,46 @@ async def cb_cancel_hours(callback: CallbackQuery, session: AsyncSession, user: 
 
 @router.callback_query(F.data == "ow:slot")
 async def cb_slot_settings(callback: CallbackQuery, session: AsyncSession, user: User):
-    studio = await get_owner_studio(session, user)
-    resource = await get_primary_resource(session, studio.id) if studio else None
+    resource = await _begin_resource_edit(callback, session, user, "ow:slp")
+    if resource is None:
+        return
+    await _show_slots(callback, resource)
+
+
+@router.callback_query(F.data.startswith("ow:slp:"))
+async def cb_slot_pick(callback: CallbackQuery, session: AsyncSession, user: User):
+    resource = await _owned_resource(session, user, int(callback.data.split(":")[2]))
+    if not resource:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    await _show_slots(callback, resource)
+
+
+async def _set_slot_field(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    user: User,
+    field: str,
+) -> Resource | None:
+    parts = callback.data.split(":")
+    if len(parts) < 4:
+        await callback.answer("Не найдено", show_alert=True)
+        return None
+    resource = await _owned_resource(session, user, int(parts[2]))
     if not resource:
         await callback.answer("Нет зала", show_alert=True)
-        return
-    text = (
-        f"Шаг {resource.slot_step_min} мин, минимум {resource.min_duration_min} мин, "
-        f"буфер {resource.buffer_min} мин. Наценка за 1 ч при минимуме 2 ч — "
-        f"{resource.hour_markup_percent}%."
-    )
-    await callback.message.answer(text, reply_markup=slot_settings_keyboard(resource))
-    await callback.answer()
-
-
-async def _set_slot_field(callback, session, user, field: str, value: int) -> Resource | None:
-    studio = await get_owner_studio(session, user)
-    resources = await list_active_resources(session, studio.id) if studio else []
-    if not resources:
-        await callback.answer("Нет зала", show_alert=True)
         return None
-    for resource in resources:
-        setattr(resource, field, value)
-        if field == "min_duration_min":
-            resource.duration_min = value
+    value = int(parts[3])
+    setattr(resource, field, value)
+    if field == "min_duration_min":
+        resource.duration_min = value
     await session.commit()
-    return resources[0]
+    return resource
 
 
 @router.callback_query(F.data.startswith("ow:step:"))
 async def cb_step(callback: CallbackQuery, session: AsyncSession, user: User):
-    resource = await _set_slot_field(callback, session, user, "slot_step_min", int(callback.data.split(":")[2]))
+    resource = await _set_slot_field(callback, session, user, "slot_step_min")
     if resource:
         await callback.message.answer("Шаг обновлён.", reply_markup=slot_settings_keyboard(resource))
         await callback.answer()
@@ -489,7 +631,7 @@ async def cb_step(callback: CallbackQuery, session: AsyncSession, user: User):
 
 @router.callback_query(F.data.startswith("ow:mind:"))
 async def cb_min_duration(callback: CallbackQuery, session: AsyncSession, user: User):
-    resource = await _set_slot_field(callback, session, user, "min_duration_min", int(callback.data.split(":")[2]))
+    resource = await _set_slot_field(callback, session, user, "min_duration_min")
     if resource:
         await callback.message.answer("Минимум обновлён.", reply_markup=slot_settings_keyboard(resource))
         await callback.answer()
@@ -497,7 +639,7 @@ async def cb_min_duration(callback: CallbackQuery, session: AsyncSession, user: 
 
 @router.callback_query(F.data.startswith("ow:buf:"))
 async def cb_buffer(callback: CallbackQuery, session: AsyncSession, user: User):
-    resource = await _set_slot_field(callback, session, user, "buffer_min", int(callback.data.split(":")[2]))
+    resource = await _set_slot_field(callback, session, user, "buffer_min")
     if resource:
         await callback.message.answer("Буфер обновлён.", reply_markup=slot_settings_keyboard(resource))
         await callback.answer()
