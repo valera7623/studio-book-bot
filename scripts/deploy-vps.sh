@@ -31,19 +31,13 @@ rsync -az --delete \
   -e "$RSYNC_SSH" \
   "$ROOT/" "${DEPLOY_HOST}:${DEPLOY_DIR}/"
 
-log "Копирование .env без TELEGRAM_PROXY (на VPS Telegram доступен напрямую)"
-python3 - "$ROOT/.env" <<'PY' | "${SSH[@]}" "$DEPLOY_HOST" "cat > '${DEPLOY_DIR}/.env' && chmod 600 '${DEPLOY_DIR}/.env'"
+log "Синхронизация .env (BOT_TOKEN / BOT_USERNAME на VPS не затираем)"
+python3 - "$ROOT/.env" <<'PY' | "${SSH[@]}" "$DEPLOY_HOST" "cat > '${DEPLOY_DIR}/.env.incoming'"
 import sys
 from pathlib import Path
-text = Path(sys.argv[1]).read_text()
-out = []
-for line in text.splitlines(True):
-    if line.startswith("TELEGRAM_PROXY="):
-        out.append("# TELEGRAM_PROXY=  # не нужен на этом VPS\n")
-        continue
-    out.append(line)
-sys.stdout.write("".join(out))
+sys.stdout.write(Path(sys.argv[1]).read_text())
 PY
+"${SSH[@]}" "$DEPLOY_HOST" "python3 '${DEPLOY_DIR}/scripts/merge_vps_env.py' '${DEPLOY_DIR}'"
 
 log "Сборка и запуск"
 "${SSH[@]}" "$DEPLOY_HOST" "cd '${DEPLOY_DIR}' && docker compose -f docker-compose.prod.yml up -d --build"

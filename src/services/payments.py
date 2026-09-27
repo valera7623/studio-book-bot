@@ -291,3 +291,29 @@ async def apply_refund(
         await session.commit()
         await session.refresh(payment)
     return payment
+
+
+async def list_refund_pending(
+    session: AsyncSession, limit: int = 20
+) -> list[tuple[Payment, Studio | None]]:
+    stmt = (
+        select(Payment, Studio)
+        .outerjoin(Studio, Payment.studio_id == Studio.id)
+        .where(Payment.status == PAYMENT_REFUND_PENDING)
+        .order_by(Payment.id.asc())
+        .limit(limit)
+    )
+    return [(row[0], row[1]) for row in (await session.execute(stmt)).all()]
+
+
+async def retry_pending_refund(
+    session: AsyncSession, payment: Payment
+) -> tuple[Payment, bool, str]:
+    if payment.status == PAYMENT_REFUNDED:
+        return payment, True, "already"
+    if payment.status != PAYMENT_REFUND_PENDING:
+        return payment, False, payment.status
+    amount = int(payment.refund_amount_rub or payment.amount_rub or 0)
+    ok, detail = await _request_provider_refund(payment, amount)
+    payment = await apply_refund(session, payment, amount, commit=True, remote_ok=ok)
+    return payment, ok, detail

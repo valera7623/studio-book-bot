@@ -134,6 +134,7 @@ async def test_admin_support_text_shows_payform_and_counts(session):
     assert "Платных подписчиков:" in text
     assert "/superadmin" in text
     assert "Пользователей:" in text
+    assert "Зависшие возвраты:" in text
 
 
 async def test_admin_lists_user_telegram_ids(session):

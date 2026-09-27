@@ -166,6 +166,76 @@ async def test_refund_pending_when_remote_fails(session, monkeypatch):
     assert payment.status == PAYMENT_REFUND_PENDING
 
 
+async def test_retry_pending_refund_marks_refunded(session, monkeypatch):
+    from src.services.payments import retry_pending_refund
+
+    resource = await _seed_resource(session, slug="ref-retry", telegram_id=12015)
+    studio = await session.get(Studio, resource.studio_id)
+    start = datetime.now(timezone.utc) + timedelta(days=5)
+    booking = await create_hold(
+        session,
+        resource=resource,
+        starts_at=start,
+        ends_at=start + timedelta(hours=1),
+        client_telegram_id=19,
+        client_name="Клиент",
+        client_phone=None,
+        client_user_id=None,
+        quoted_price_rub=1000,
+        prepay_amount_rub=1000,
+        studio=studio,
+    )
+    payment = await create_slot_invoice(session, booking, 1000)
+    await apply_paid_order(session, payment.prodamus_invoice_id)
+    payment.status = PAYMENT_REFUND_PENDING
+    payment.refund_amount_rub = 1000
+    await session.commit()
+
+    async def _ok(*_args, **_kwargs):
+        return True, "ok"
+
+    monkeypatch.setattr("src.services.payments.yookassa.request_refund", _ok)
+    monkeypatch.setattr("src.services.payments.prodamus.request_refund", _ok)
+    payment, ok, detail = await retry_pending_refund(session, payment)
+    assert ok is True
+    assert payment.status == PAYMENT_REFUNDED
+    assert detail == "ok"
+
+
+async def test_admin_lists_pending_refund_slug(session):
+    from src.database.models.payment import KIND_SLOT_PREPAY
+    from src.handlers.admin_commands import (
+        admin_refund_retry_keyboard,
+        platform_support_text,
+    )
+    from src.services.payments import list_refund_pending
+
+    resource = await _seed_resource(session, slug="stuck-hall", telegram_id=12016)
+    studio = await session.get(Studio, resource.studio_id)
+    session.add(
+        Payment(
+            kind=KIND_SLOT_PREPAY,
+            studio_id=studio.id,
+            amount_rub=1500,
+            refund_amount_rub=1500,
+            status=PAYMENT_REFUND_PENDING,
+            provider="yookassa",
+        )
+    )
+    await session.commit()
+    text = await platform_support_text(session)
+    assert "stuck-hall" in text
+    assert "refund_pending" in text
+    rows = await list_refund_pending(session)
+    assert len(rows) == 1
+    datas = [
+        btn.callback_data
+        for row in admin_refund_retry_keyboard(rows).inline_keyboard
+        for btn in row
+    ]
+    assert any(d.startswith("ad:rr:") for d in datas)
+
+
 async def test_amount_matches():
     payment = Payment(kind=KIND_SLOT_PREPAY, amount_rub=490, status=PAYMENT_PENDING)
     assert amount_matches(payment, 490, required=True)
