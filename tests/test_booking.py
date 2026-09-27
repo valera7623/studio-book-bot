@@ -203,6 +203,19 @@ def test_open_days_ahead_skips_closed_weekdays():
     assert len(days) == 10
 
 
+def test_booking_horizon_is_one_constant(monkeypatch):
+    from src.config import settings
+    from src.handlers import booking as booking_mod
+    from src.services.slots import open_days_ahead
+
+    assert settings.BOOKING_HORIZON_DAYS == 14
+    assert not hasattr(booking_mod, "BOOKING_HORIZON_DAYS")
+    resource = Resource(studio_id=1, name="Зал", timezone="Europe/Moscow")
+    monkeypatch.setattr(settings, "BOOKING_HORIZON_DAYS", 30)
+    days = open_days_ahead(resource, today=date(2026, 9, 1))
+    assert len(days) == 30
+
+
 def test_format_weekdays_short_compact():
     from src.services.slots import format_weekdays_short
 

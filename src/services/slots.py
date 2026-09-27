@@ -297,12 +297,13 @@ def resource_open_on(resource: Resource, day) -> bool:
     return int(day.isoweekday()) in allowed
 
 
-def open_days_ahead(resource: Resource, n: int = 14, *, today=None):
+def open_days_ahead(resource: Resource, n: int | None = None, *, today=None):
+    horizon = int(n if n is not None else settings.BOOKING_HORIZON_DAYS)
     tz = ZoneInfo(resource.timezone or "Europe/Moscow")
     start = today if today is not None else datetime.now(tz).date()
     return [
         start + timedelta(days=i)
-        for i in range(n)
+        for i in range(horizon)
         if resource_open_on(resource, start + timedelta(days=i))
     ]
 

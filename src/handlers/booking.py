@@ -46,7 +46,6 @@ from src.utils.validators import validate_name, validate_phone
 
 router = Router()
 _NOT_COMMAND = F.text & ~F.text.startswith("/")
-BOOKING_HORIZON_DAYS = 14
 
 
 async def _set_message(message: Message, text: str, reply_markup=None, *, edit: bool = False) -> None:
@@ -61,7 +60,7 @@ async def _set_message(message: Message, text: str, reply_markup=None, *, edit: 
 
 async def _ask_dates(message: Message, studio: Studio, resource: Resource, *, edit: bool = False) -> None:
     tz_name = resource.timezone or studio.timezone
-    days = open_days_ahead(resource, BOOKING_HORIZON_DAYS)
+    days = open_days_ahead(resource)
     if not days:
         await _set_message(message, "В ближайшие дни зал не работает.", edit=edit)
         return

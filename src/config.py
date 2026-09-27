@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     HOLD_TTL_MAX: int = 24 * 60
     REMINDER_HOURS: int = 24
     REMINDER_2H_HOURS: int = 2
+    # Клиентский календарь слотов. Месяц = 30, не отдельный модуль и не настройка зала.
+    BOOKING_HORIZON_DAYS: int = 14
 
     FREE_RESOURCE_LIMIT: int = 1
     PLUS_RESOURCE_LIMIT: int = 6
