@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, time
+from datetime import date, datetime, time
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
@@ -10,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
-from src.database.models.booking import STATUS_BLOCKED, STATUS_HOLD, STATUS_PAID, Booking
+from src.database.models.booking import STATUS_BLOCKED, STATUS_PAID, Booking
 from src.database.models.studio import TARIFF_FREE, TARIFF_PLUS, TARIFF_STARTER, Resource, Studio
 from src.database.models.user import User
 from src.keyboards.inline import (
@@ -28,6 +29,16 @@ from src.keyboards.inline import (
     weekdays_keyboard,
 )
 from src.services import payments as payment_svc
+from src.services.bookings_list import (
+    MODE_ALL,
+    MODE_CANCELLED,
+    MODE_DATE,
+    BookingsPage,
+    bookings_heading,
+    format_booking_line,
+    list_owner_bookings,
+    parse_owner_date,
+)
 from src.services.cancellations import cancel_booking, cancel_rules_text, preview_cancel
 from src.services.formatters import booking_summary, format_interval_local, format_slot_local
 from src.services.ical import build_calendar, feed_url
@@ -789,43 +800,156 @@ async def owner_block_interval(message: Message, session: AsyncSession, user: Us
     await show_cabinet(message, session, user)
 
 
-@router.callback_query(F.data == "ow:book")
-async def cb_bookings(callback: CallbackQuery, session: AsyncSession, user: User):
+def _bookings_markup(page_data: BookingsPage, tz_name: str):
+    buttons: list[tuple[int, str, str]] = []
+    for booking in page_data.rows:
+        resource = booking.resource
+        hall = resource.name if resource else "зал"
+        tz = (resource.timezone if resource and resource.timezone else None) or tz_name
+        when = format_slot_local(booking.starts_at, tz)
+        buttons.append((booking.id, f"{hall} {when}", booking.status))
+    return bookings_keyboard(
+        buttons,
+        mode=page_data.mode,
+        page=page_data.page,
+        pages=page_data.pages,
+        day=page_data.day,
+    )
+
+
+def _bookings_text(page_data: BookingsPage, tz_name: str) -> str:
+    lines = [bookings_heading(page_data)]
+    cancelled = page_data.mode == MODE_CANCELLED
+    if page_data.rows:
+        lines.append("")
+        for booking in page_data.rows:
+            lines.append(format_booking_line(booking, tz_name, cancelled=cancelled))
+    return "\n".join(lines)
+
+
+async def _deliver_bookings(message: Message, text: str, markup, *, edit: bool) -> None:
+    if edit:
+        try:
+            await message.edit_text(text, reply_markup=markup)
+            return
+        except Exception:
+            pass
+    await message.answer(text, reply_markup=markup)
+
+
+async def _show_bookings(
+    dest: Message,
+    session: AsyncSession,
+    user: User,
+    *,
+    mode: str = MODE_ALL,
+    day: date | None = None,
+    page: int = 0,
+    edit: bool = True,
+) -> bool:
     studio = await get_owner_studio(session, user)
     if not studio:
+        return False
+    page_data = await list_owner_bookings(
+        session,
+        studio.id,
+        mode=mode,
+        day=day,
+        page=page,
+        tz_name=studio.timezone or "Europe/Moscow",
+    )
+    tz_name = studio.timezone or "Europe/Moscow"
+    await _deliver_bookings(
+        dest,
+        _bookings_text(page_data, tz_name),
+        _bookings_markup(page_data, tz_name),
+        edit=edit,
+    )
+    return True
+
+
+@router.callback_query(F.data == "ow:book")
+async def cb_bookings(callback: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    await state.clear()
+    if not await _show_bookings(callback.message, session, user, mode=MODE_ALL, page=0):
         await callback.answer("Нет студии", show_alert=True)
         return
-    stmt = (
-        select(Booking)
-        .where(
-            Booking.studio_id == studio.id,
-            Booking.status.in_((STATUS_HOLD, STATUS_PAID, STATUS_BLOCKED)),
-        )
-        .order_by(Booking.starts_at.asc())
-        .limit(20)
-    )
-    rows = (await session.execute(stmt)).scalars().all()
-    if not rows:
-        await callback.message.answer("Активных броней нет.", reply_markup=owner_cabinet_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("ow:bk:"))
+async def cb_bookings_page(callback: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    parts = (callback.data or "").split(":")
+    if len(parts) < 4:
         await callback.answer()
         return
-    lines = ["📋 <b>Брони</b>\n"]
-    buttons: list[tuple[int, str, str]] = []
-    for booking in rows:
-        resource = await session.get(Resource, booking.resource_id)
-        tz = resource.timezone if resource else studio.timezone
-        when = format_slot_local(booking.starts_at, tz)
-        hall = resource.name if resource else "зал"
-        if booking.status == STATUS_HOLD:
-            mark = "⏳"
-        elif booking.status == STATUS_BLOCKED:
-            mark = "🚫"
-        else:
-            mark = "✅"
-        lines.append(f"{mark} {hall} {when} — {booking.client_name} ({booking.client_phone or '—'})")
-        buttons.append((booking.id, f"{hall} {when}", booking.status))
-    await callback.message.answer("\n".join(lines), reply_markup=bookings_keyboard(buttons))
+    await state.clear()
+    try:
+        page = int(parts[3])
+    except ValueError:
+        await callback.answer()
+        return
+    if not await _show_bookings(callback.message, session, user, mode=parts[2], page=page):
+        await callback.answer("Нет студии", show_alert=True)
+        return
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("ow:bkd:"))
+async def cb_bookings_day(callback: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    parts = (callback.data or "").split(":")
+    if len(parts) < 4:
+        await callback.answer()
+        return
+    await state.clear()
+    try:
+        day = date.fromisoformat(parts[2])
+        page = int(parts[3])
+    except ValueError:
+        await callback.answer()
+        return
+    if not await _show_bookings(
+        callback.message, session, user, mode=MODE_DATE, day=day, page=page
+    ):
+        await callback.answer("Нет студии", show_alert=True)
+        return
+    await callback.answer()
+
+
+@router.callback_query(F.data == "ow:bkp")
+async def cb_bookings_date_prompt(
+    callback: CallbackQuery, session: AsyncSession, user: User, state: FSMContext
+):
+    if not await get_owner_studio(session, user):
+        await callback.answer("Нет студии", show_alert=True)
+        return
+    await state.set_state(OwnerStates.waiting_booking_date)
+    await callback.message.answer("Дата броней, например 27.09 или 27.09.2026")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "ow:bkn")
+async def cb_bookings_noop(callback: CallbackQuery):
+    await callback.answer()
+
+
+@router.message(OwnerStates.waiting_booking_date, _NOT_COMMAND)
+async def owner_booking_date(message: Message, session: AsyncSession, user: User, state: FSMContext):
+    studio = await get_owner_studio(session, user)
+    if not studio:
+        await message.answer("Нет студии.")
+        await state.clear()
+        return
+    tz_name = studio.timezone or "Europe/Moscow"
+    today = datetime.now(ZoneInfo(tz_name)).date()
+    day = parse_owner_date(message.text or "", today=today)
+    if day is None:
+        await message.answer("Формат: 27.09 или 27.09.2026")
+        return
+    await state.clear()
+    await _show_bookings(
+        message, session, user, mode=MODE_DATE, day=day, page=0, edit=False
+    )
 
 
 @router.callback_query(F.data.startswith("ow:ok:"))

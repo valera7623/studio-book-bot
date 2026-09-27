@@ -13,6 +13,7 @@ class OwnerStates(StatesGroup):
     waiting_extra_resource = State()
     waiting_resource_rename = State()
     waiting_block_interval = State()
+    waiting_booking_date = State()
 
 
 class BookingStates(StatesGroup):

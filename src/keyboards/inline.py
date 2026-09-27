@@ -176,15 +176,64 @@ def owner_hold_keyboard(booking_id: int) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def bookings_keyboard(items: list[tuple[int, str, str]]) -> InlineKeyboardMarkup:
+def _bookings_nav_cb(mode: str, page: int, day: date | None = None) -> str:
+    if mode == "d" and day is not None:
+        return f"ow:bkd:{day.isoformat()}:{page}"
+    return f"ow:bk:{mode}:{page}"
+
+
+def bookings_keyboard(
+    items: list[tuple[int, str, str]],
+    *,
+    mode: str = "a",
+    page: int = 0,
+    pages: int = 1,
+    day: date | None = None,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    filters = (
+        ("a", "Все"),
+        ("t", "Сегодня"),
+        ("n", "Завтра"),
+        ("w", "7 дней"),
+        ("c", "Отмены"),
+    )
+    for code, label in filters:
+        mark = "· " if mode == code else ""
+        builder.button(text=f"{mark}{label}", callback_data=_bookings_nav_cb(code, 0))
+    date_label = "Дата…"
+    if mode == "d" and day is not None:
+        date_label = day.strftime("%d.%m")
+    date_mark = "· " if mode == "d" else ""
+    builder.button(text=f"{date_mark}{date_label}", callback_data="ow:bkp")
+
+    item_buttons = 0
+    cancelled = mode == "c"
     for booking_id, label, status in items:
+        if cancelled:
+            continue
         short = label[:24]
         if status == "hold":
             builder.button(text=f"Подтвердить {short}", callback_data=f"ow:ok:{booking_id}")
+            item_buttons += 1
         builder.button(text=f"Отменить {short}", callback_data=f"ow:c:{booking_id}")
+        item_buttons += 1
+
+    nav = pages > 1
+    if nav:
+        prev_page = max(0, page - 1)
+        next_page = min(pages - 1, page + 1)
+        builder.button(text="‹", callback_data=_bookings_nav_cb(mode, prev_page, day))
+        builder.button(text=f"{page + 1}/{pages}", callback_data="ow:bkn")
+        builder.button(text="›", callback_data=_bookings_nav_cb(mode, next_page, day))
+
     builder.button(text="↩️ Кабинет", callback_data="ow:cab")
-    builder.adjust(1)
+    sizes = [3, 3]
+    sizes.extend([1] * item_buttons)
+    if nav:
+        sizes.append(3)
+    sizes.append(1)
+    builder.adjust(*sizes)
     return builder.as_markup()
 
 
