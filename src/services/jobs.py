@@ -14,6 +14,12 @@ from src.database.models.booking import STATUS_PAID, Booking
 from src.database.models.studio import Resource, Studio
 from src.services.formatters import booking_summary
 from src.services.slots import expire_holds
+from src.services.tariffs import (
+    collect_due_subscription_notices,
+    subscription_downgrade_text,
+    subscription_remind_text,
+    sync_expired_subscription,
+)
 from src.utils.qr_code import studio_start_link
 
 logger = logging.getLogger(__name__)
@@ -92,6 +98,28 @@ async def job_reminders(bot, session_maker) -> None:
                 booking.reminder_sent_at = now
         if due:
             await session.commit()
+
+
+async def job_subscription_notices(bot, session_maker) -> None:
+    now = utcnow()
+    async with session_maker() as session:
+        due = await collect_due_subscription_notices(session, now)
+        for studio, kind in due:
+            extra_names: list[str] = []
+            if kind == "downgrade":
+                _changed, extra_names = await sync_expired_subscription(session, studio, now)
+                text = subscription_downgrade_text(studio, extra_names)
+                studio.subscription_downgrade_notice_at = now
+            else:
+                text = subscription_remind_text(studio)
+                studio.subscription_reminded_at = now
+            try:
+                await bot.send_message(studio.owner_telegram_id, text)
+            except Exception:
+                logger.exception("subscription notice %s studio=%s", kind, studio.id)
+        if due:
+            await session.commit()
+            logger.info("subscription notices: %s", len(due))
 
 
 def backup_sqlite() -> Path | None:

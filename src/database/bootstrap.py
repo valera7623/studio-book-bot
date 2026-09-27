@@ -32,6 +32,20 @@ def _add_missing_columns(sync_conn) -> None:
     if _table_exists(sync_conn, "studios"):
         cols = _columns(sync_conn, "studios")
         _add_column(sync_conn, "studios", cols, "subscription_until", "subscription_until DATETIME")
+        _add_column(
+            sync_conn,
+            "studios",
+            cols,
+            "subscription_reminded_at",
+            "subscription_reminded_at DATETIME",
+        )
+        _add_column(
+            sync_conn,
+            "studios",
+            cols,
+            "subscription_downgrade_notice_at",
+            "subscription_downgrade_notice_at DATETIME",
+        )
         _add_column(sync_conn, "studios", cols, "hold_ttl_minutes", "hold_ttl_minutes INTEGER DEFAULT 20")
         _add_column(sync_conn, "studios", cols, "prepay_percent", "prepay_percent INTEGER DEFAULT 100")
         _add_column(sync_conn, "studios", cols, "cancel_free_hours", "cancel_free_hours INTEGER DEFAULT 72")

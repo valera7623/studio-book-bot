@@ -1,4 +1,4 @@
-from datetime import time
+from datetime import datetime, timedelta, timezone, time
 
 from src.database.models.studio import TARIFF_PLUS, Resource, Studio
 from src.database.models.user import User
@@ -86,6 +86,7 @@ async def _seed_two_halls(session):
         tariff=TARIFF_PLUS,
         resource_limit=6,
         timezone="Europe/Moscow",
+        subscription_until=datetime.now(timezone.utc) + timedelta(days=20),
     )
     session.add(studio)
     await session.flush()

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.database.models.booking import STATUS_BLOCKED, STATUS_HOLD, STATUS_PAID, Booking
-from src.database.models.studio import TARIFF_PLUS, TARIFF_STARTER, Resource, Studio
+from src.database.models.studio import TARIFF_FREE, TARIFF_PLUS, TARIFF_STARTER, Resource, Studio
 from src.database.models.user import User
 from src.keyboards.inline import (
     bookings_keyboard,
@@ -47,7 +47,13 @@ from src.services.studios import (
     list_active_resources,
     unique_slug,
 )
-from src.services.tariffs import can_add_resource, tariff_label
+from src.services.tariffs import (
+    can_add_resource,
+    sync_expired_subscription,
+    tariff_cabinet_line,
+    tariff_label,
+    until_label,
+)
 from src.states.booking import OwnerStates
 from src.utils.qr_code import generate_booking_qr, resolve_bot_username
 
@@ -135,6 +141,10 @@ async def show_cabinet(message: Message, session: AsyncSession, user: User) -> N
         )
         return
     resources = await list_active_resources(session, studio.id)
+    changed, _ = await sync_expired_subscription(session, studio)
+    if changed:
+        await session.commit()
+        resources = await list_active_resources(session, studio.id)
     res_lines = []
     for resource in resources:
         hours = f"{resource.work_start.strftime('%H:%M')}–{resource.work_end.strftime('%H:%M')}"
@@ -148,7 +158,7 @@ async def show_cabinet(message: Message, session: AsyncSession, user: User) -> N
     text = (
         f"🏠 <b>{studio.name}</b>\n"
         f"slug: <code>{studio.slug}</code>\n"
-        f"Тариф: {tariff_label(studio.tariff)}\n"
+        f"{tariff_cabinet_line(studio)}\n"
         f"Окно оплаты: {studio.hold_ttl_minutes} мин\n"
         f"Предоплата: {studio.prepay_percent}%\n"
         f"Отмена бесплатно за {studio.cancel_free_hours} ч "
@@ -1020,10 +1030,19 @@ async def cb_tariff(callback: CallbackQuery, session: AsyncSession, user: User):
     if not studio:
         await callback.answer("Нет студии", show_alert=True)
         return
-    until = studio.subscription_until.strftime("%d.%m.%Y") if studio.subscription_until else "—"
+    changed, _ = await sync_expired_subscription(session, studio)
+    if changed:
+        await session.commit()
+    until = until_label(studio)
+    if studio.tariff != TARIFF_FREE:
+        paid_line = f"Оплачен до: {until}"
+    elif until != "—":
+        paid_line = f"Подписка истекла: {until}"
+    else:
+        paid_line = "Оплачен до: —"
     text = (
         f"Текущий тариф: <b>{tariff_label(studio.tariff)}</b>\n"
-        f"Оплачен до: {until}\n\n"
+        f"{paid_line}\n\n"
         f"Free — 1 зал, {settings.FREE_BOOKINGS_PER_MONTH} записей/мес.\n"
         f"Старт {settings.TARIFF_STARTER_RUB} ₽ — 1 зал, без лимита записей.\n"
         f"Плюс {settings.TARIFF_PLUS_RUB} ₽ — до {settings.PLUS_RESOURCE_LIMIT} залов.\n\n"

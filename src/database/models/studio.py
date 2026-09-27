@@ -37,6 +37,14 @@ class Studio(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    subscription_reminded_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    subscription_downgrade_notice_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     hold_ttl_minutes: Mapped[int] = mapped_column(Integer, default=20)
     prepay_percent: Mapped[int] = mapped_column(Integer, default=100)
     cancel_free_hours: Mapped[int] = mapped_column(Integer, default=72)

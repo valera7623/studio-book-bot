@@ -253,6 +253,7 @@ async def test_free_monthly_limit(session):
     assert ok is False
     assert "лимит" in reason.lower()
     studio.tariff = TARIFF_STARTER
+    studio.subscription_until = datetime.now(timezone.utc) + timedelta(days=10)
     ok, _ = await can_create_booking(session, studio)
     assert ok is True
 

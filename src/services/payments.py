@@ -263,6 +263,8 @@ async def apply_paid_order(session: AsyncSession, order_id: str) -> Payment | No
             now = utcnow()
             start = base if base and base > now else now
             studio.subscription_until = start + timedelta(days=30)
+            studio.subscription_reminded_at = None
+            studio.subscription_downgrade_notice_at = None
 
     await session.commit()
     await session.refresh(payment)
