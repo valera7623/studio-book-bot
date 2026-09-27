@@ -274,15 +274,71 @@ async def has_overlap(
     return False
 
 
+def parse_weekdays(raw: str | None) -> set[int]:
+    days: set[int] = set()
+    for part in (raw or "").split(","):
+        part = part.strip()
+        if not part.isdigit():
+            continue
+        n = int(part)
+        if 1 <= n <= 7:
+            days.add(n)
+    return days
+
+
+def serialize_weekdays(days: set[int]) -> str:
+    return ",".join(str(n) for n in sorted(n for n in days if 1 <= n <= 7))
+
+
+def resource_open_on(resource: Resource, day) -> bool:
+    allowed = parse_weekdays(resource.weekdays)
+    if not allowed:
+        return True
+    return int(day.isoweekday()) in allowed
+
+
+def open_days_ahead(resource: Resource, n: int = 14, *, today=None):
+    tz = ZoneInfo(resource.timezone or "Europe/Moscow")
+    start = today if today is not None else datetime.now(tz).date()
+    return [
+        start + timedelta(days=i)
+        for i in range(n)
+        if resource_open_on(resource, start + timedelta(days=i))
+    ]
+
+
+_WD_SHORT = ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+
+
+def format_weekdays_short(raw: str | None) -> str:
+    days = sorted(parse_weekdays(raw))
+    if not days or days == [1, 2, 3, 4, 5, 6, 7]:
+        return ""
+    runs: list[tuple[int, int]] = []
+    start = prev = days[0]
+    for n in days[1:]:
+        if n == prev + 1:
+            prev = n
+            continue
+        runs.append((start, prev))
+        start = prev = n
+    runs.append((start, prev))
+    parts = []
+    for a, b in runs:
+        if a == b:
+            parts.append(_WD_SHORT[a - 1])
+        else:
+            parts.append(f"{_WD_SHORT[a - 1]}–{_WD_SHORT[b - 1]}")
+    return ", ".join(parts)
+
+
 def generate_slots_for_day(
     resource: Resource,
     day,
     duration_min: int | None = None,
 ) -> list[Slot]:
     tz = ZoneInfo(resource.timezone or "Europe/Moscow")
-    weekday = str(day.isoweekday())
-    allowed = {part.strip() for part in (resource.weekdays or "").split(",") if part.strip()}
-    if allowed and weekday not in allowed:
+    if not resource_open_on(resource, day):
         return []
     duration_min = int(duration_min or resource.duration_min or 60)
     step_min = int(resource.slot_step_min or resource.duration_min or 60)

@@ -167,6 +167,50 @@ async def test_generate_hourly_slots_moscow():
     assert local0.hour == 10
 
 
+async def test_generate_slots_skips_closed_weekdays():
+    resource = Resource(
+        studio_id=1,
+        name="Зал",
+        duration_min=60,
+        timezone="Europe/Moscow",
+        work_start=time(10, 0),
+        work_end=time(12, 0),
+        weekdays="1,2,3,4,5",
+    )
+    monday = date(2026, 9, 7)
+    saturday = date(2026, 9, 5)
+    sunday = date(2026, 9, 6)
+    assert generate_slots_for_day(resource, monday)
+    assert generate_slots_for_day(resource, saturday) == []
+    assert generate_slots_for_day(resource, sunday) == []
+
+
+def test_open_days_ahead_skips_closed_weekdays():
+    from src.services.slots import open_days_ahead
+
+    resource = Resource(
+        studio_id=1,
+        name="Зал",
+        timezone="Europe/Moscow",
+        weekdays="1,2,3,4,5",
+    )
+    today = date(2026, 9, 5)
+    days = open_days_ahead(resource, 14, today=today)
+    assert all(d.isoweekday() <= 5 for d in days)
+    assert today not in days
+    assert date(2026, 9, 6) not in days
+    assert date(2026, 9, 7) in days
+    assert len(days) == 10
+
+
+def test_format_weekdays_short_compact():
+    from src.services.slots import format_weekdays_short
+
+    assert format_weekdays_short("1,2,3,4,5,6,7") == ""
+    assert format_weekdays_short("1,2,3,4,5") == "Пн–Пт"
+    assert format_weekdays_short("1,3,5") == "Пн, Ср, Пт"
+
+
 async def test_available_slots_skip_hold(session):
     resource = await _seed_resource(session)
     day = _future_day()

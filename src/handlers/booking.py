@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
@@ -34,8 +33,10 @@ from src.services.slots import (
     clamp_hold_ttl,
     create_hold,
     generate_slots_for_day,
+    open_days_ahead,
     prepay_amount_rub,
     quote_price_rub,
+    resource_open_on,
     shoot_minutes,
 )
 from src.services.studios import get_studio_by_slug, list_active_resources
@@ -47,11 +48,6 @@ from src.utils.validators import validate_name, validate_phone
 router = Router()
 _NOT_COMMAND = F.text & ~F.text.startswith("/")
 BOOKING_HORIZON_DAYS = 14
-
-
-def _days_ahead(tz_name: str, n: int = BOOKING_HORIZON_DAYS) -> list[date]:
-    today = datetime.now(ZoneInfo(tz_name)).date()
-    return [today + timedelta(days=i) for i in range(n)]
 
 
 async def _set_message(message: Message, text: str, reply_markup=None, *, edit: bool = False) -> None:
@@ -66,10 +62,14 @@ async def _set_message(message: Message, text: str, reply_markup=None, *, edit: 
 
 async def _ask_dates(message: Message, studio: Studio, resource: Resource, *, edit: bool = False) -> None:
     tz_name = resource.timezone or studio.timezone
+    days = open_days_ahead(resource, BOOKING_HORIZON_DAYS)
+    if not days:
+        await _set_message(message, "В ближайшие дни зал не работает.", edit=edit)
+        return
     await _set_message(
         message,
         f"📅 <b>{studio.name}</b>\nЗал: {resource.name}\nВыберите дату:",
-        date_keyboard(resource.id, _days_ahead(tz_name), tz_name),
+        date_keyboard(resource.id, days, tz_name),
         edit=edit,
     )
 
@@ -134,6 +134,9 @@ async def cb_pick_date(callback: CallbackQuery, session: AsyncSession, state: FS
     durations = allowed_durations(resource)
     sample_slots = generate_slots_for_day(resource, day, durations[0])
     if not sample_slots:
+        if not resource_open_on(resource, day):
+            await callback.answer("Зал в этот день не работает", show_alert=True)
+            return
         await callback.answer("На эту дату слотов нет", show_alert=True)
         return
     sample_start = sample_slots[0].starts_at

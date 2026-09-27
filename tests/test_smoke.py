@@ -238,3 +238,4 @@ def test_owner_cheat_sheet_covers_buttons():
     markup = owner_cabinet_keyboard()
     datas = [btn.callback_data for row in markup.inline_keyboard for btn in row]
     assert "ow:guide" in datas
+    assert "ow:days" in datas

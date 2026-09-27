@@ -23,13 +23,22 @@ from src.keyboards.inline import (
     rules_keyboard,
     slot_settings_keyboard,
     tariff_keyboard,
+    weekdays_keyboard,
 )
 from src.services import payments as payment_svc
 from src.services.cancellations import cancel_booking, cancel_rules_text, preview_cancel
 from src.services.formatters import booking_summary, format_interval_local, format_slot_local
 from src.services.ical import build_calendar, feed_url
 from src.services.outreach import owner_cheat_sheet, owner_copy_pack, owner_next_steps
-from src.services.slots import confirm_hold, create_block, parse_block_interval, parse_hours
+from src.services.slots import (
+    confirm_hold,
+    create_block,
+    format_weekdays_short,
+    parse_block_interval,
+    parse_hours,
+    parse_weekdays,
+    serialize_weekdays,
+)
 from src.services.studios import (
     get_owner_studio,
     get_primary_resource,
@@ -127,8 +136,10 @@ async def show_cabinet(message: Message, session: AsyncSession, user: User) -> N
     res_lines = []
     for resource in resources:
         hours = f"{resource.work_start.strftime('%H:%M')}–{resource.work_end.strftime('%H:%M')}"
+        days = format_weekdays_short(resource.weekdays)
+        days_bit = f", {days}" if days else ""
         res_lines.append(
-            f"• {resource.name}: {hours}, {resource.price_rub} ₽/ч, "
+            f"• {resource.name}: {hours}{days_bit}, {resource.price_rub} ₽/ч, "
             f"шаг {resource.slot_step_min} мин, буфер {resource.buffer_min} мин"
         )
     halls = "\n".join(res_lines) if res_lines else "—"
@@ -397,6 +408,63 @@ async def owner_hours_edit(message: Message, session: AsyncSession, user: User, 
     await state.clear()
     await message.answer("Часы обновлены.")
     await show_cabinet(message, session, user)
+
+
+async def _show_weekdays(callback: CallbackQuery, resource: Resource) -> None:
+    await callback.message.answer(
+        f"Дни работы для {_hall_label(resource)}",
+        reply_markup=weekdays_keyboard(resource),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "ow:days")
+async def cb_days(callback: CallbackQuery, session: AsyncSession, user: User):
+    resource = await _begin_resource_edit(callback, session, user, "ow:wdp")
+    if resource is None:
+        return
+    await _show_weekdays(callback, resource)
+
+
+@router.callback_query(F.data.startswith("ow:wdp:"))
+async def cb_days_pick(callback: CallbackQuery, session: AsyncSession, user: User):
+    resource = await _owned_resource(session, user, int(callback.data.split(":")[2]))
+    if not resource:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    await _show_weekdays(callback, resource)
+
+
+@router.callback_query(F.data.startswith("ow:wd:"))
+async def cb_weekday_toggle(callback: CallbackQuery, session: AsyncSession, user: User):
+    parts = callback.data.split(":")
+    if len(parts) < 4:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    resource = await _owned_resource(session, user, int(parts[2]))
+    day_n = int(parts[3])
+    if not resource or day_n < 1 or day_n > 7:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    days = parse_weekdays(resource.weekdays) or {1, 2, 3, 4, 5, 6, 7}
+    if day_n in days:
+        if len(days) == 1:
+            await callback.answer("Нужен хотя бы один день", show_alert=True)
+            return
+        days.remove(day_n)
+    else:
+        days.add(day_n)
+    resource.weekdays = serialize_weekdays(days)
+    await session.commit()
+    markup = weekdays_keyboard(resource)
+    try:
+        await callback.message.edit_reply_markup(reply_markup=markup)
+    except Exception:
+        await callback.message.answer(
+            f"Дни работы для {_hall_label(resource)}",
+            reply_markup=markup,
+        )
+    await callback.answer()
 
 
 @router.callback_query(F.data == "ow:price")

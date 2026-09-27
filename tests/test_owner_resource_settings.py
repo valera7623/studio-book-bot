@@ -4,12 +4,19 @@ from src.database.models.studio import TARIFF_PLUS, Resource, Studio
 from src.database.models.user import User
 from src.handlers.owner import (
     _begin_resource_edit,
+    cb_days,
     cb_hours,
     cb_step,
+    cb_weekday_toggle,
     owner_hours_edit,
     owner_price_edit,
 )
-from src.keyboards.inline import grid_keyboard, owner_resource_pick_keyboard, slot_settings_keyboard
+from src.keyboards.inline import (
+    grid_keyboard,
+    owner_resource_pick_keyboard,
+    slot_settings_keyboard,
+    weekdays_keyboard,
+)
 from src.services.outreach import owner_cheat_sheet
 from src.states.booking import OwnerStates
 
@@ -21,6 +28,9 @@ class FakeMessage:
 
     async def answer(self, text, **kwargs):
         self.replies.append((text, kwargs))
+
+    async def edit_reply_markup(self, **kwargs):
+        self.replies.append(("", kwargs))
 
 
 class FakeCallback:
@@ -224,5 +234,47 @@ def test_resource_pick_keyboard_prefix():
 def test_cheat_sheet_mentions_hall_pick():
     text = owner_cheat_sheet()
     assert "выбрать зал" in text
+    assert "Дни недели" in text
     assert "для всех залов" not in text
     assert len(text) < 3500
+
+
+async def test_weekday_toggle_one_hall_does_not_change_other(session):
+    owner, cyc, makeup = await _seed_two_halls(session)
+    makeup_days = makeup.weekdays
+    callback = FakeCallback(f"ow:wd:{cyc.id}:7")
+    await cb_weekday_toggle(callback, session, owner)
+    await session.refresh(cyc)
+    await session.refresh(makeup)
+    assert cyc.weekdays == "1,2,3,4,5,6"
+    assert makeup.weekdays == makeup_days
+
+
+async def test_cannot_disable_last_weekday(session):
+    owner, cyc, _makeup = await _seed_two_halls(session)
+    cyc.weekdays = "7"
+    await session.commit()
+    callback = FakeCallback(f"ow:wd:{cyc.id}:7")
+    await cb_weekday_toggle(callback, session, owner)
+    await session.refresh(cyc)
+    assert cyc.weekdays == "7"
+    assert any("Нужен хотя бы один день" in str(item) for item in callback.alerts)
+
+
+async def test_two_halls_days_asks_which_resource(session):
+    owner, cyc, makeup = await _seed_two_halls(session)
+    callback = FakeCallback("ow:days")
+    await cb_days(callback, session, owner)
+    text, kwargs = callback.message.replies[0]
+    assert text == "Какой зал?"
+    datas = _kb_datas(kwargs["reply_markup"])
+    assert f"ow:wdp:{cyc.id}" in datas
+    assert f"ow:wdp:{makeup.id}" in datas
+
+
+def test_weekdays_keyboard_embeds_resource_id():
+    resource = Resource(id=42, name="Циклорама", weekdays="1,2,3,4,5")
+    datas = _kb_datas(weekdays_keyboard(resource))
+    assert "ow:wd:42:6" in datas
+    assert "ow:wd:42:7" in datas
+    assert "ow:wd:42:1" in datas

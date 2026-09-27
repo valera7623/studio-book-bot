@@ -6,7 +6,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from src.database.models.studio import Resource
 from src.services.formatters import format_day_label
-from src.services.slots import Slot, allowed_durations, quote_price_rub
+from src.services.slots import Slot, allowed_durations, parse_weekdays, quote_price_rub
 
 
 def profile_keyboard() -> InlineKeyboardMarkup:
@@ -33,6 +33,7 @@ def owner_cabinet_keyboard() -> InlineKeyboardMarkup:
     builder.button(text="🔗 Ссылка записи", callback_data="ow:link")
     builder.button(text="📣 Тексты", callback_data="ow:txt")
     builder.button(text="🕒 Часы работы", callback_data="ow:hr")
+    builder.button(text="🗓 Дни недели", callback_data="ow:days")
     builder.button(text="💰 Цена часа", callback_data="ow:price")
     builder.button(text="📐 Сетка цен", callback_data="ow:grid")
     builder.button(text="⚙️ Правила", callback_data="ow:rules")
@@ -222,6 +223,20 @@ def slot_settings_keyboard(resource: Resource) -> InlineKeyboardMarkup:
     )
     builder.button(text="↩️ Кабинет", callback_data="ow:cab")
     builder.adjust(2)
+    return builder.as_markup()
+
+
+_WD_BUTTONS = ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+
+
+def weekdays_keyboard(resource: Resource) -> InlineKeyboardMarkup:
+    allowed = parse_weekdays(resource.weekdays) or {1, 2, 3, 4, 5, 6, 7}
+    builder = InlineKeyboardBuilder()
+    for n, label in enumerate(_WD_BUTTONS, start=1):
+        mark = "· " if n in allowed else ""
+        builder.button(text=f"{mark}{label}", callback_data=f"ow:wd:{resource.id}:{n}")
+    builder.button(text="↩️ Кабинет", callback_data="ow:cab")
+    builder.adjust(7, 1)
     return builder.as_markup()
 
 
