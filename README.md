@@ -80,8 +80,8 @@ data/legal/cancel_rules.md  шаблон отмены / обеспечитель
 
 Прод: VPS `185.106.95.16`, каталог `/home/valera/studio-book`, контейнер `studio-book-bot-1`.
 
-Автодеплой: push в `main` репозитория [valera7623/studio-book-bot](https://github.com/valera7623/studio-book-bot) → GitHub Actions собирает образ `ghcr.io/valera7623/studio-book-bot` и перезапускает контейнер. Вручную: Actions → Deploy studio-book to VPS → Run workflow.
+Автодеплой: push в `main` репозитория [valera7623/studio-book-bot](https://github.com/valera7623/studio-book-bot) → GitHub Actions собирает образ `ghcr.io/valera7623/studio-book-bot` и на VPS делает pull. Новый код — только так, не `docker compose --build` на сервере.
 
 Секреты репозитория: `VPS_HOST`, `VPS_USERNAME`, `VPS_SSH_KEY`.
 
-Локально на VPS без Actions: `./scripts/deploy-vps.sh`.
+`.env` на VPS (токен не из git): `./scripts/deploy-vps.sh` — merge и перезапуск уже скачанного образа GHCR.

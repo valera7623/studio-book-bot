@@ -1,6 +1,5 @@
 # Production на VPS РФ.
-# GitHub Actions пушит ghcr.io/valera7623/studio-book-bot и на сервере только pull.
-# Локально / scripts/deploy-vps.sh: docker compose up --build (образ studio-book:local).
+# Образ только из GHCR (GitHub Actions). На сервере pull / --no-build, не --build.
 #
 # network_mode: host — polling к api.telegram.org как у хоста.
 services:
@@ -10,8 +9,7 @@ services:
     command: ["redis-server", "--port", "6379", "--save", "", "--appendonly", "no", "--bind", "127.0.0.1"]
     restart: unless-stopped
   bot:
-    image: ${DOCKER_IMAGE:-studio-book:local}
-    build: .
+    image: ${DOCKER_IMAGE:-ghcr.io/valera7623/studio-book-bot:latest}
     network_mode: host
     env_file:
       - .env

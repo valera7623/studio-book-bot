@@ -220,6 +220,50 @@ def test_go_live_runbook_has_webhook():
     assert "первая оплата слота" in pain
 
 
+def test_bootstrap_adds_weekdays_on_legacy_resources(tmp_path):
+    import sqlite3
+
+    from sqlalchemy import create_engine
+
+    from src.database.bootstrap import _columns, _register_models_and_create_all
+
+    db = tmp_path / "legacy.db"
+    raw = sqlite3.connect(db)
+    raw.execute(
+        "CREATE TABLE resources (id INTEGER PRIMARY KEY, studio_id INTEGER, name VARCHAR(128))"
+    )
+    raw.execute("INSERT INTO resources (id, studio_id, name) VALUES (1, 1, 'Циклорама')")
+    raw.commit()
+    raw.close()
+
+    engine = create_engine(f"sqlite:///{db.resolve()}")
+    with engine.begin() as conn:
+        _register_models_and_create_all(conn)
+        cols = _columns(conn, "resources")
+    assert "weekdays" in cols
+    assert "is_active" in cols
+    again = sqlite3.connect(db)
+    row = again.execute("SELECT weekdays, is_active FROM resources WHERE id = 1").fetchone()
+    again.close()
+    assert row[0] == "1,2,3,4,5,6,7"
+    assert row[1] in (1, True)
+
+
+def test_prod_deploy_is_ghcr_not_local_build():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    compose = (root / "docker-compose.prod.yml").read_text(encoding="utf-8")
+    script = (root / "scripts" / "deploy-vps.sh").read_text(encoding="utf-8")
+    assert "build:" not in compose
+    assert "ghcr.io/valera7623/studio-book-bot" in compose
+    assert "studio-book:local" not in compose.split("image:")[1][:200]
+    assert "--no-build" in script
+    assert "up -d --build" not in script
+    assert "не исходники бота" in script or "не собирает" in script
+
+
+
 def test_landing_render_uses_studio_book_username(tmp_path):
     from src.web.app import _render_landing
 

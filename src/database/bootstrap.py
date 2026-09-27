@@ -71,6 +71,14 @@ def _add_missing_columns(sync_conn) -> None:
         _add_column(sync_conn, "resources", cols, "weekend_price_rub", "weekend_price_rub INTEGER DEFAULT 0")
         _add_column(sync_conn, "resources", cols, "night_price_rub", "night_price_rub INTEGER DEFAULT 0")
         _add_column(sync_conn, "resources", cols, "night_start", "night_start TIME")
+        _add_column(
+            sync_conn,
+            "resources",
+            cols,
+            "weekdays",
+            "weekdays VARCHAR(32) DEFAULT '1,2,3,4,5,6,7'",
+        )
+        _add_column(sync_conn, "resources", cols, "is_active", "is_active BOOLEAN DEFAULT 1")
     if _table_exists(sync_conn, "payments"):
         cols = _columns(sync_conn, "payments")
         _add_column(sync_conn, "payments", cols, "refunded_at", "refunded_at DATETIME")
