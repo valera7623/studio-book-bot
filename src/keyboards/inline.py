@@ -40,9 +40,27 @@ def owner_cabinet_keyboard() -> InlineKeyboardMarkup:
     builder.button(text="⏱ Слоты", callback_data="ow:slot")
     builder.button(text="🚫 Закрыть интервал", callback_data="ow:block")
     builder.button(text="➕ Зал", callback_data="ow:res")
+    builder.button(text="✏️ Залы", callback_data="ow:hall")
     builder.button(text="💳 Тариф", callback_data="ow:tariff")
     builder.button(text="📅 iCal", callback_data="ow:ical")
     builder.adjust(1, 2)
+    return builder.as_markup()
+
+
+def hall_manage_keyboard(resource: Resource) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✏️ Переименовать", callback_data=f"ow:ren:{resource.id}")
+    builder.button(text="⏹ Выключить", callback_data=f"ow:off:{resource.id}")
+    builder.button(text="↩️ Кабинет", callback_data="ow:cab")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def hall_off_confirm_keyboard(resource_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Да, выключить", callback_data=f"ow:ofok:{resource_id}")
+    builder.button(text="Отмена", callback_data="ow:cab")
+    builder.adjust(1)
     return builder.as_markup()
 
 

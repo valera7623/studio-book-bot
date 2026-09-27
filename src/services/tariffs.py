@@ -71,8 +71,11 @@ async def list_active_paid_studios(
 
 
 async def count_resources(session: AsyncSession, studio_id: int) -> int:
+    """Считаем только активные залы — выключенный освобождает слот лимита."""
     value = await session.scalar(
-        select(func.count()).select_from(Resource).where(Resource.studio_id == studio_id)
+        select(func.count())
+        .select_from(Resource)
+        .where(Resource.studio_id == studio_id, Resource.is_active.is_(True))
     )
     return int(value or 0)
 

@@ -11,6 +11,7 @@ class OwnerStates(StatesGroup):
     waiting_weekend_price = State()
     waiting_night_price = State()
     waiting_extra_resource = State()
+    waiting_resource_rename = State()
     waiting_block_interval = State()
 
 

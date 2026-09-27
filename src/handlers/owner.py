@@ -17,6 +17,8 @@ from src.keyboards.inline import (
     bookings_keyboard,
     confirm_cancel_keyboard,
     grid_keyboard,
+    hall_manage_keyboard,
+    hall_off_confirm_keyboard,
     owner_cabinet_keyboard,
     owner_resource_pick_keyboard,
     pay_keyboard,
@@ -913,6 +915,103 @@ async def owner_extra_resource(message: Message, session: AsyncSession, user: Us
     await state.clear()
     await message.answer(f"Зал «{name}» добавлен.")
     await show_cabinet(message, session, user)
+
+
+async def _show_hall_manage(callback: CallbackQuery, resource: Resource) -> None:
+    await callback.message.answer(
+        f"Зал {_hall_label(resource)} — что сделать?",
+        reply_markup=hall_manage_keyboard(resource),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "ow:hall")
+async def cb_hall_manage(callback: CallbackQuery, session: AsyncSession, user: User):
+    resource = await _begin_resource_edit(callback, session, user, "ow:hlp")
+    if resource is None:
+        return
+    await _show_hall_manage(callback, resource)
+
+
+@router.callback_query(F.data.startswith("ow:hlp:"))
+async def cb_hall_manage_pick(callback: CallbackQuery, session: AsyncSession, user: User):
+    resource = await _owned_resource(session, user, int(callback.data.split(":")[2]))
+    if not resource:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    await _show_hall_manage(callback, resource)
+
+
+@router.callback_query(F.data.startswith("ow:ren:"))
+async def cb_rename_hall(callback: CallbackQuery, session: AsyncSession, user: User, state: FSMContext):
+    resource = await _owned_resource(session, user, int(callback.data.split(":")[2]))
+    if not resource:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    await state.update_data(edit_resource_id=resource.id)
+    await state.set_state(OwnerStates.waiting_resource_rename)
+    await callback.message.answer(
+        f"Новое название для {_hall_label(resource)}? Сейчас: {resource.name}"
+    )
+    await callback.answer()
+
+
+@router.message(OwnerStates.waiting_resource_rename, _NOT_COMMAND)
+async def owner_resource_rename(message: Message, session: AsyncSession, user: User, state: FSMContext):
+    name = (message.text or "").strip()
+    if len(name) < 1:
+        await message.answer("Название слишком короткое.")
+        return
+    if len(name) > 128:
+        await message.answer("Максимум 128 символов.")
+        return
+    resource = await _edit_resource_from_state(session, user, state)
+    if not resource:
+        await message.answer("Зал не найден.")
+        await state.clear()
+        return
+    resource.name = name
+    await session.commit()
+    await state.clear()
+    await message.answer(f"Зал переименован в {_hall_label(resource)}.")
+    await show_cabinet(message, session, user)
+
+
+@router.callback_query(F.data.startswith("ow:off:"))
+async def cb_off_hall(callback: CallbackQuery, session: AsyncSession, user: User):
+    resource = await _owned_resource(session, user, int(callback.data.split(":")[2]))
+    if not resource:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    studio = await get_owner_studio(session, user)
+    active = await list_active_resources(session, studio.id) if studio else []
+    if len(active) <= 1:
+        await callback.answer("Нельзя выключить последний зал", show_alert=True)
+        return
+    await callback.message.answer(
+        f"Выключить {_hall_label(resource)}? Клиенты его больше не увидят. "
+        "Активные брони останутся. Слот лимита освободится.",
+        reply_markup=hall_off_confirm_keyboard(resource.id),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("ow:ofok:"))
+async def cb_off_hall_ok(callback: CallbackQuery, session: AsyncSession, user: User):
+    resource = await _owned_resource(session, user, int(callback.data.split(":")[2]))
+    if not resource:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    studio = await get_owner_studio(session, user)
+    active = await list_active_resources(session, studio.id) if studio else []
+    if len(active) <= 1:
+        await callback.answer("Нельзя выключить последний зал", show_alert=True)
+        return
+    resource.is_active = False
+    await session.commit()
+    await callback.message.answer(f"Зал {_hall_label(resource)} выключен.")
+    await show_cabinet(callback.message, session, user)
+    await callback.answer()
 
 
 @router.callback_query(F.data == "ow:tariff")

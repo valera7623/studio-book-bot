@@ -5,18 +5,25 @@ from src.database.models.user import User
 from src.handlers.owner import (
     _begin_resource_edit,
     cb_days,
+    cb_hall_manage,
     cb_hours,
+    cb_off_hall,
+    cb_off_hall_ok,
     cb_step,
     cb_weekday_toggle,
     owner_hours_edit,
     owner_price_edit,
+    owner_resource_rename,
 )
 from src.keyboards.inline import (
     grid_keyboard,
+    hall_manage_keyboard,
     owner_resource_pick_keyboard,
     slot_settings_keyboard,
     weekdays_keyboard,
 )
+from src.services.studios import list_active_resources
+from src.services.tariffs import can_add_resource, count_resources
 from src.services.outreach import owner_cheat_sheet
 from src.states.booking import OwnerStates
 
@@ -235,6 +242,7 @@ def test_cheat_sheet_mentions_hall_pick():
     text = owner_cheat_sheet()
     assert "выбрать зал" in text
     assert "Дни недели" in text
+    assert "✏️ Залы" in text
     assert "для всех залов" not in text
     assert len(text) < 3500
 
@@ -278,3 +286,55 @@ def test_weekdays_keyboard_embeds_resource_id():
     assert "ow:wd:42:6" in datas
     assert "ow:wd:42:7" in datas
     assert "ow:wd:42:1" in datas
+
+
+def test_hall_manage_keyboard_callbacks():
+    resource = Resource(id=7, name="Грим")
+    datas = _kb_datas(hall_manage_keyboard(resource))
+    assert "ow:ren:7" in datas
+    assert "ow:off:7" in datas
+
+
+async def test_rename_hall_updates_name(session):
+    owner, cyc, makeup = await _seed_two_halls(session)
+    state = FakeState(edit_resource_id=cyc.id)
+    await owner_resource_rename(FakeMessage("Циклорама 2"), session, owner, state)
+    await session.refresh(cyc)
+    await session.refresh(makeup)
+    assert cyc.name == "Циклорама 2"
+    assert makeup.name == "Грим"
+
+
+async def test_deactivate_hall_hides_from_active(session):
+    owner, cyc, makeup = await _seed_two_halls(session)
+    callback = FakeCallback(f"ow:ofok:{makeup.id}")
+    await cb_off_hall_ok(callback, session, owner)
+    await session.refresh(makeup)
+    assert makeup.is_active is False
+    active = await list_active_resources(session, cyc.studio_id)
+    assert [r.id for r in active] == [cyc.id]
+    assert await count_resources(session, cyc.studio_id) == 1
+    ok, _ = await can_add_resource(session, await session.get(Studio, cyc.studio_id))
+    assert ok
+
+
+async def test_cannot_deactivate_last_hall(session):
+    owner, cyc, makeup = await _seed_two_halls(session)
+    makeup.is_active = False
+    await session.commit()
+    callback = FakeCallback(f"ow:off:{cyc.id}")
+    await cb_off_hall(callback, session, owner)
+    await session.refresh(cyc)
+    assert cyc.is_active is True
+    assert any("последний зал" in str(item) for item in callback.alerts)
+
+
+async def test_two_halls_manage_asks_which(session):
+    owner, cyc, makeup = await _seed_two_halls(session)
+    callback = FakeCallback("ow:hall")
+    await cb_hall_manage(callback, session, owner)
+    text, kwargs = callback.message.replies[0]
+    assert text == "Какой зал?"
+    datas = _kb_datas(kwargs["reply_markup"])
+    assert f"ow:hlp:{cyc.id}" in datas
+    assert f"ow:hlp:{makeup.id}" in datas
