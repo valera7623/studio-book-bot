@@ -4,7 +4,7 @@
 from pathlib import Path
 import sys
 
-KEEP = ("BOT_TOKEN", "BOT_USERNAME", "DOCKER_IMAGE")
+KEEP = ("BOT_TOKEN", "BOT_USERNAME", "DOCKER_IMAGE", "ADMINS", "SUPERADMINS")
 
 
 def kv(text: str) -> dict[str, str]:
@@ -16,6 +16,12 @@ def kv(text: str) -> dict[str, str]:
         key, value = line.split("=", 1)
         out[key.strip()] = value
     return out
+
+
+def keep_value(raw: str) -> bool:
+    """[] не считается заданным — иначе пустой ADMINS с VPS навсегда затирает новый список."""
+    value = raw.strip().strip('"').strip("'")
+    return bool(value) and value not in ("[]", "{}", "null", "None")
 
 
 def main() -> None:
@@ -32,7 +38,7 @@ def main() -> None:
             continue
         kept = False
         for key in KEEP:
-            if line.startswith(f"{key}=") and keep.get(key, "").strip():
+            if line.startswith(f"{key}=") and keep_value(keep.get(key, "")):
                 lines.append(f"{key}={keep[key].rstrip()}\n")
                 kept = True
                 break

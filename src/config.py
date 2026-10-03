@@ -1,12 +1,40 @@
 """Настройки бота записи в фотостудию."""
 
+from __future__ import annotations
+
+import json
 from pathlib import Path
-from typing import List
+from typing import Annotated, List
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def parse_id_list(value) -> list[int]:
+    """ADMINS: JSON-список, одно число или через запятую. [] и пусто — никого."""
+    if value is None or value is False:
+        return []
+    if isinstance(value, int):
+        return [value]
+    if isinstance(value, str):
+        raw = value.strip().strip('"').strip("'")
+        if not raw or raw in ("[]", "{}", "null", "None"):
+            return []
+        if raw.startswith("["):
+            try:
+                return parse_id_list(json.loads(raw))
+            except json.JSONDecodeError:
+                pass
+        parts = [p.strip().strip("'\"") for p in raw.split(",") if p.strip().strip("'\"")]
+        return [int(p) for p in parts]
+    if isinstance(value, (list, tuple, set, frozenset)):
+        out: list[int] = []
+        for item in value:
+            out.extend(parse_id_list(item))
+        return out
+    return [int(value)]
 
 
 class Settings(BaseSettings):
@@ -17,10 +45,10 @@ class Settings(BaseSettings):
         description="socks5://127.0.0.1:1080 или http://proxy:8080",
     )
 
-    # Саппорт продукта, не контент справочника
-    ADMINS: List[int] = Field(default_factory=list)
-    # Superadmin: платные подписчики (кол-во и Telegram ID). Пусто = те же, что ADMINS.
-    SUPERADMINS: List[int] = Field(default_factory=list)
+    # Саппорт продукта. NoDecode: иначе ADMINS=772208133 становится int и Settings падает.
+    ADMINS: Annotated[List[int], NoDecode] = Field(default_factory=list)
+    # Superadmin: платные подписчики. Пусто = те же ID, что ADMINS.
+    SUPERADMINS: Annotated[List[int], NoDecode] = Field(default_factory=list)
 
     SQLITE_PATH: Path = Field(
         default=PROJECT_ROOT / "data" / "studio_book.db",
@@ -80,16 +108,7 @@ class Settings(BaseSettings):
     @field_validator("ADMINS", "SUPERADMINS", mode="before")
     @classmethod
     def parse_int_list(cls, v):
-        if isinstance(v, list):
-            return v
-        if isinstance(v, str):
-            try:
-                import json
-
-                return json.loads(v)
-            except json.JSONDecodeError:
-                return [int(x.strip()) for x in v.split(",") if x.strip()]
-        return v
+        return parse_id_list(v)
 
     @property
     def admin_ids(self) -> frozenset[int]:

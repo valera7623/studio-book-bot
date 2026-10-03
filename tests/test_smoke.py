@@ -220,6 +220,58 @@ def test_go_live_runbook_has_webhook():
     assert "первая оплата слота" in pain
 
 
+def test_parse_id_list_accepts_bare_and_json():
+    from src.config import parse_id_list
+
+    assert parse_id_list([]) == []
+    assert parse_id_list("[]") == []
+    assert parse_id_list(772208133) == [772208133]
+    assert parse_id_list("772208133") == [772208133]
+    assert parse_id_list("[772208133]") == [772208133]
+    assert parse_id_list('["772208133", 1]') == [772208133, 1]
+    assert parse_id_list("772208133, 1") == [772208133, 1]
+
+
+def test_admins_env_bare_id_does_not_crash(monkeypatch):
+    from src.config import Settings
+
+    monkeypatch.setenv("ADMINS", "772208133")
+    monkeypatch.delenv("SUPERADMINS", raising=False)
+    loaded = Settings()
+    assert loaded.ADMINS == [772208133]
+    assert 772208133 in loaded.admin_ids
+    assert 772208133 in loaded.superadmin_ids
+
+
+def test_merge_keeps_admins_but_not_empty_list():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "merge_vps_env.py"
+    spec = importlib.util.spec_from_file_location("merge_vps_env", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert "ADMINS" in mod.KEEP
+    assert mod.keep_value("[772208133]")
+    assert not mod.keep_value("[]")
+    assert not mod.keep_value("")
+
+
+async def test_admin_denied_shows_telegram_id():
+    from src.handlers.admin_commands import cmd_admin_denied
+    from tests.test_owner_resource_settings import FakeMessage
+
+    class _User:
+        id = 772208133
+
+    msg = FakeMessage()
+    msg.from_user = _User()
+    await cmd_admin_denied(msg)
+    text = msg.replies[0][0]
+    assert "Нет доступа" in text
+    assert "772208133" in text
+
+
 def test_bootstrap_adds_weekdays_on_legacy_resources(tmp_path):
     import sqlite3
 

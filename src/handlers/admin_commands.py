@@ -199,6 +199,16 @@ async def cmd_admin(message: Message, session: AsyncSession):
         await message.answer(chunk, reply_markup=markup if i == last else None)
 
 
+@router.message(Command("admin"))
+async def cmd_admin_denied(message: Message):
+    uid = message.from_user.id if message.from_user else 0
+    await message.answer(
+        "Нет доступа к /admin.\n"
+        f"Ваш Telegram ID: <code>{uid}</code>\n"
+        "Добавьте его в ADMINS в .env на сервере, например ADMINS=[123456789]."
+    )
+
+
 @router.callback_query(F.data.startswith("ad:rr:"), AdminFilter())
 async def cb_retry_refund(callback: CallbackQuery, session: AsyncSession):
     payment_id = int(callback.data.split(":")[2])
@@ -221,3 +231,13 @@ async def cb_retry_refund(callback: CallbackQuery, session: AsyncSession):
 async def cmd_superadmin(message: Message, session: AsyncSession):
     for chunk in await paid_subscribers_messages(session):
         await message.answer(chunk)
+
+
+@router.message(Command("superadmin"))
+async def cmd_superadmin_denied(message: Message):
+    uid = message.from_user.id if message.from_user else 0
+    await message.answer(
+        "Нет доступа к /superadmin.\n"
+        f"Ваш Telegram ID: <code>{uid}</code>\n"
+        "Нужен ID из SUPERADMINS или ADMINS в .env на сервере."
+    )
