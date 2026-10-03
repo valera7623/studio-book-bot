@@ -251,10 +251,46 @@ def test_merge_keeps_admins_but_not_empty_list():
     spec = importlib.util.spec_from_file_location("merge_vps_env", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    assert "ADMINS" in mod.KEEP
+    assert "BOT_TOKEN" in mod.ALWAYS_VPS
     assert mod.keep_value("[772208133]")
     assert not mod.keep_value("[]")
     assert not mod.keep_value("")
+
+
+def test_merge_env_keeps_yookassa_when_laptop_omits_keys():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "merge_vps_env.py"
+    spec = importlib.util.spec_from_file_location("merge_vps_env", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    incoming = (
+        "BOT_TOKEN=laptop-token\n"
+        "BOT_USERNAME=Saas_concept_bot\n"
+        "ADMINS=[]\n"
+        "YOOKASSA_SHOP_ID=\n"
+        "YOOKASSA_SECRET_KEY=\n"
+    )
+    existing = (
+        "BOT_TOKEN=vps-token\n"
+        "BOT_USERNAME=Studio_book_bot\n"
+        "ADMINS=[772208133]\n"
+        "YOOKASSA_SHOP_ID=shop-from-vps\n"
+        "YOOKASSA_SECRET_KEY=secret-from-vps\n"
+        "PUBLIC_BASE_URL=https://studiobook.com.ru\n"
+        "PAYMENT_PROVIDER=auto\n"
+    )
+    merged = mod.merge_env(incoming, existing)
+    assert "BOT_TOKEN=vps-token" in merged
+    assert "BOT_USERNAME=Studio_book_bot" in merged
+    assert "ADMINS=[772208133]" in merged
+    assert "YOOKASSA_SHOP_ID=shop-from-vps" in merged
+    assert "YOOKASSA_SECRET_KEY=secret-from-vps" in merged
+    assert "PUBLIC_BASE_URL=https://studiobook.com.ru" in merged
+    assert "PAYMENT_PROVIDER=auto" in merged
+    assert "laptop-token" not in merged
+    assert "Saas_concept_bot" not in merged
 
 
 async def test_admin_denied_shows_telegram_id():
